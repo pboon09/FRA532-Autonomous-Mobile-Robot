@@ -19,6 +19,13 @@ endif()
 find_package(ament_cmake REQUIRED)		# cpp (optional)
 find_package(rclcpp REQUIRED)			# cpp (optional)
 find_package(ament_cmake_python REQUIRED)   	# python (optional)
+find_package(Eigen3 REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(rclpy REQUIRED)                	# python (optional)
 ######################################################
 
@@ -37,17 +44,23 @@ include_directories(include)
 
 # Create Cpp executable
 add_executable(cpp_node_test src/cpp_node.cpp)
+add_executable(turtle_ekf_node src/main.cpp src/ekf_core.cpp src/ekf_node.cpp)
 ament_target_dependencies(cpp_node_test rclcpp)
+ament_target_dependencies(turtle_ekf_node rclcpp sensor_msgs nav_msgs geometry_msgs tf2 tf2_ros tf2_geometry_msgs)
+target_link_libraries(turtle_ekf_node Eigen3::Eigen)
 
 # Install Cpp executables
 install(TARGETS
   cpp_node_test
+  turtle_ekf_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
 ################ INSTALL LAUNCH, ETC #################
 install(DIRECTORY
   # add directories here
+  launch
+  config
   DESTINATION share/${PROJECT_NAME})
 
 ament_package()
