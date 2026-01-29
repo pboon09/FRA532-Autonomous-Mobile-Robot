@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
@@ -133,10 +135,11 @@ class TurtleWheelOdometry(Node):
 
         self.pose_cov = F_p @ self.pose_cov @ F_p.T + F_delta @ wheel_cov @ F_delta.T
 
-        v_l = omega_l * r
-        v_r = omega_r * r
-        v = (v_l + v_r) / 2.0
-        w = (v_r - v_l) / b
+        v = (d_l + d_r) / (2.0 * dt)
+        w = (d_r - d_l) / (b * dt)
+
+        v_l = d_l / dt
+        v_r = d_r / dt
 
         self.publish_odom(stamp, self.x, self.y, self.theta, v, w, v_l, v_r)
         self.last_rad_l = rad_l
