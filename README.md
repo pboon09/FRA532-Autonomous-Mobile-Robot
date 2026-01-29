@@ -68,13 +68,13 @@ source ~/.bashrc
 cd FRA532-Autonomous-Mobile-Robot
  
 # Sequence 00 - Empty Hallway
-ros2 bag play FRA532_LAB1_DATASET/fibo_floor3_seq00
+ros2 bag play FRA532_LAB1_DATASET/fibo_floor3_seq00 --clock
 
 # Sequence 01 - Non-Empty Hallway with Sharp Turns
-ros2 bag play FRA532_LAB1_DATASET/fibo_floor3_seq01
+ros2 bag play FRA532_LAB1_DATASET/fibo_floor3_seq01 --clock
 
 # Sequence 02 - Non-Empty Hallway with Non-Aggressive Motion
-ros2 bag play FRA532_LAB1_DATASET/fibo_floor3_seq02
+ros2 bag play FRA532_LAB1_DATASET/fibo_floor3_seq02 --clock
 ```
 
 ---
@@ -268,7 +268,129 @@ For ROS Odometry twist covariance (6×6 matrix as 36-element array):
 
 ### 1.4 Extended Kalman Filter
 
-<!-- TODO: Add EKF equations (predict and correct steps) -->
+#### State Definition
+
+We define a **3-state EKF** for differential drive robot localization:
+
+$$\mathbf{x} = \begin{bmatrix} x \\ y \\ \theta \end{bmatrix}$$
+
+| State | Description |
+|-------|-------------|
+| $x$ | Position in x-axis (meters) |
+| $y$ | Position in y-axis (meters) |
+| $\theta$ | Heading angle (radians) |
+
+**Why only 3 states?**
+
+For a differential drive robot, velocities $(v, \omega)$ are **directly measured** from wheel encoders, not estimated. Adding velocity states would:
+- Increase computational complexity without benefit
+- Add noise from redundant state estimation
+- Create coupling issues between measured and estimated velocities
+
+The 3-state model is optimal because wheel odometry provides accurate velocity measurements directly.
+
+#### Input (Control) from Wheel Odometry
+
+The EKF uses velocity from wheel odometry as **control input**, not as state:
+
+$$\mathbf{u} = \begin{bmatrix} v \\ \omega \end{bmatrix}$$
+
+Where:
+- $v = \frac{\Delta s_l + \Delta s_r}{2 \cdot \Delta t}$ = linear velocity (m/s)
+- $\omega = \frac{\Delta s_r - \Delta s_l}{b \cdot \Delta t}$ = angular velocity (rad/s)
+
+**Why use position delta / dt instead of angular velocity directly?**
+
+The velocity must be computed from position deltas because:
+1. **Consistency:** Pose is computed from position deltas, so velocity must match
+2. **Timing:** Our timer may skip joint_states messages; position delta captures total motion
+3. **Reliability:** Angular velocity field may be empty in some bags/simulators
+
+#### Measurement from IMU
+
+The IMU provides orientation as a quaternion. We extract only **yaw angle** as measurement:
+
+$$\mathbf{z} = \begin{bmatrix} \theta_{IMU} \end{bmatrix}$$
+
+**Why only yaw from IMU?**
+
+| IMU Data | Used? | Reason |
+|----------|-------|--------|
+| Orientation (yaw) | ✅ | Absolute heading reference, corrects wheel odometry drift |
+| Orientation (roll, pitch) | ❌ | Ground robot assumes planar motion |
+| Angular velocity | ❌ | Wheel encoders provide more accurate $\omega$ |
+| Linear acceleration | ❌ | Requires double integration (drift), wheel odometry is better |
+
+The IMU yaw is valuable because:
+- It provides an **absolute heading reference** (from magnetometer/gyro fusion)
+- Wheel odometry heading drifts over time due to wheel slip
+- IMU orientation is independent of wheel slip errors
+
+#### Prediction Step
+
+Using velocity motion model:
+
+$$\mathbf{x}_{k|k-1} = f(\mathbf{x}_{k-1}, \mathbf{u}_k) = \begin{bmatrix} x + v \cdot \cos(\theta) \cdot \Delta t \\ y + v \cdot \sin(\theta) \cdot \Delta t \\ \theta + \omega \cdot \Delta t \end{bmatrix}$$
+
+**State Jacobian** $F$ (derivative of $f$ with respect to state):
+
+$$F = \frac{\partial f}{\partial \mathbf{x}} = \begin{bmatrix} 1 & 0 & -v \cdot \sin(\theta) \cdot \Delta t \\ 0 & 1 & v \cdot \cos(\theta) \cdot \Delta t \\ 0 & 0 & 1 \end{bmatrix}$$
+
+**Covariance Prediction:**
+
+$$P_{k|k-1} = F \cdot P_{k-1} \cdot F^T + Q$$
+
+Where $Q$ is the **process noise covariance** (represents unmodeled dynamics like wheel slip):
+
+$$Q = \begin{bmatrix} \sigma_x^2 & 0 & 0 \\ 0 & \sigma_y^2 & 0 \\ 0 & 0 & \sigma_\theta^2 \end{bmatrix} = \begin{bmatrix} 0.001 & 0 & 0 \\ 0 & 0.001 & 0 \\ 0 & 0 & 0.01 \end{bmatrix}$$
+
+#### Correction Step
+
+When IMU measurement is received:
+
+**Innovation (measurement residual):**
+
+$$y = z - H \cdot \mathbf{x}_{k|k-1} = \theta_{IMU} - \theta_{predicted}$$
+
+**Measurement Jacobian** $H$ (maps state to measurement):
+
+$$H = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}$$
+
+This selects only $\theta$ from the state vector.
+
+**Innovation Covariance:**
+
+$$S = H \cdot P_{k|k-1} \cdot H^T + R$$
+
+Where $R$ is the **measurement noise covariance** (IMU yaw uncertainty):
+
+$$R = \begin{bmatrix} 0.1 \end{bmatrix}$$
+
+**Kalman Gain:**
+
+$$K = P_{k|k-1} \cdot H^T \cdot S^{-1}$$
+
+**State Update:**
+
+$$\mathbf{x}_k = \mathbf{x}_{k|k-1} + K \cdot y$$
+
+**Covariance Update:**
+
+$$P_k = (I - K \cdot H) \cdot P_{k|k-1}$$
+
+#### Noise Covariance Summary
+
+| Parameter | Symbol | Value | Meaning |
+|-----------|--------|-------|---------|
+| Process Noise (x, y) | $Q_{xx}, Q_{yy}$ | 0.001 | Trust in motion model position |
+| Process Noise (θ) | $Q_{\theta\theta}$ | 0.01 | Trust in motion model heading |
+| Measurement Noise | $R$ | 0.1 | Trust in IMU yaw measurement |
+| Initial Covariance | $P_0$ | diag(0.1, 0.1, 0.1) | Initial state uncertainty |
+
+**Tuning Guidelines:**
+- **Higher Q** → Less trust in wheel odometry, more reliance on IMU
+- **Higher R** → Less trust in IMU, more reliance on wheel odometry
+- **Balance** depends on sensor quality and environment
 
 ### 1.5 Implementation
 
