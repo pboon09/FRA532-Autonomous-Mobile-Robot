@@ -7,18 +7,6 @@
 namespace turtle_ekf
 {
 
-/**
- * @brief 3-state Extended Kalman Filter for differential drive robot localization.
- *
- * State: [x, y, theta] - position and orientation in world frame
- * Input: (v, omega) - linear and angular velocity from wheel odometry (measured, not estimated)
- * Measurement: theta from IMU orientation
- *
- * This design is optimal for differential drive robots because:
- * - Wheel encoders provide accurate v, omega directly (no need to estimate)
- * - IMU provides accurate theta (fused to correct drift)
- * - More states would add noise without improving accuracy
- */
 class EKFCore
 {
 public:
@@ -37,12 +25,6 @@ public:
                     const Eigen::MatrixXd& initial_covariance,
                     const Eigen::MatrixXd& process_noise);
 
-    /**
-     * @brief Predict state using measured velocities as control input.
-     * @param v Linear velocity (m/s) from wheel odometry
-     * @param omega Angular velocity (rad/s) from wheel odometry
-     * @param dt Time step (seconds)
-     */
     void predict(double v, double omega, double dt);
 
     void correct(const Eigen::VectorXd& z,
