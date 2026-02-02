@@ -22,6 +22,9 @@
       - [1.2.6 Noise Covariance](#126-noise-covariance)
     - [1.3 Experimental Validation](#13-experimental-validation)
       - [Experimental Setup](#experimental-setup)
+      - [Filter Validation](#filter-validation)
+      - [Trajectory Comparison](#trajectory-comparison)
+      - [Time Series Analysis](#time-series-analysis)
   - [Part 2: ICP Odometry Refinement](#part-2-icp-odometry-refinement)
   - [Part 3: Full SLAM with slam\_toolbox](#part-3-full-slam-with-slam_toolbox)
   - [Part 4: Results](#part-4-results)
@@ -80,6 +83,11 @@ ros2 bag play FRA532_LAB1_DATASET/fibo_floor3_seq01 --clock
 ros2 bag play FRA532_LAB1_DATASET/fibo_floor3_seq02 --clock
 ```
 
+**Terminal 2: Choose which part you want to see the result**
+```bash
+ros2 launch turtle_bringup part1.launch.py
+```
+
 ---
 
 ## Part 1: EKF Odometry Fusion
@@ -95,8 +103,8 @@ This section presents a sensor fusion approach combining wheel odometry and IMU 
 
 | Parameter | Symbol | Value | Description |
 |-----------|--------|-------|-------------|
-| Wheel radius | $r$ | 0.033 m | TurtleBot3 Burger wheel radius |
-| Track width | $b$ | 0.160 m | Distance between wheel centers |
+| Wheel radius | r | 0.033 m | TurtleBot3 Burger wheel radius |
+| Track width | b | 0.160 m | Distance between wheel centers |
 
 #### Wheel Displacement
 
@@ -172,9 +180,9 @@ The EKF estimates a 3-dimensional state vector:
 
 | State | Description |
 |-------|-------------|
-| $x$ | Position in x-axis (m) |
-| $y$ | Position in y-axis (m) |
-| $\theta$ | Heading angle (rad) |
+| x | Position in x-axis (m) |
+| y | Position in y-axis (m) |
+| θ | Heading angle (rad) |
 
 **Why these 3 states?**
 - A ground robot is constrained to planar motion, so only 2D position and heading are needed
@@ -234,7 +242,7 @@ Wheel odometry pose is derived from the **same encoder data** used in prediction
 |----------|------|-----------|
 | Orientation (yaw) | Yes | Heading reference independent of wheel slip |
 | Orientation (roll, pitch) | No | Ground robot assumes planar motion |
-| Angular velocity | No | Wheel encoders provide more accurate $\omega$ |
+| Angular velocity | No | Wheel encoders provide more accurate ω |
 | Linear acceleration | No | Double integration causes drift; wheel odometry is superior |
 
 **IMU Offset Handling:**
@@ -324,10 +332,10 @@ The Kalman filter models two sources of uncertainty:
 
 | Noise Type | Symbol | Source | Purpose |
 |------------|--------|--------|---------|
-| **Process Noise** | $Q_t$ | Motion model imperfection | Accounts for unmodeled dynamics (wheel slip, terrain variation) |
-| **Measurement Noise** | $R_t$ | Sensor imperfection | Accounts for sensor noise and bias |
+| **Process Noise** | Q | Motion model imperfection | Accounts for unmodeled dynamics (wheel slip, terrain variation) |
+| **Measurement Noise** | R | Sensor imperfection | Accounts for sensor noise and bias |
 
-Without noise covariances, the filter cannot balance prediction vs. measurement. $Q_t$ represents how much we **distrust** the motion model per timestep; $R_t$ represents how much we **distrust** the sensor measurement.
+Without noise covariances, the filter cannot balance prediction vs. measurement. Q represents how much we **distrust** the motion model per timestep; R represents how much we **distrust** the sensor measurement.
 
 **Covariance Matrices in This Work:**
 
@@ -339,10 +347,10 @@ Q_t = \begin{bmatrix} Q_{xx} & 0 & 0 \\ 0 & Q_{yy} & 0 \\ 0 & 0 & Q_{\theta\thet
 
 | Value | Meaning |
 |-------|---------|
-| Lower $Q_t$ | More trust in motion model (prediction) |
-| Higher $Q_t$ | Less trust in motion model, faster response to measurement |
-| Lower $R_t$ | More trust in measurement |
-| Higher $R_t$ | Less trust in measurement, smoother estimate, relies more on prediction |
+| Lower Q | More trust in motion model (prediction) |
+| Higher Q | Less trust in motion model, faster response to measurement |
+| Lower R | More trust in measurement |
+| Higher R | Less trust in measurement, smoother estimate, relies more on prediction |
 
 **What Really Affects the Estimate in This 3-State Model?**
 
@@ -355,7 +363,7 @@ The IMU measures **only heading $\theta$**, which determines which states can be
 
 Wheel odometry cannot be a measurement because it already defines the motion model. Using it for both would double-count information.
 
-**What happens to x, y, θ during correction?**
+**What happens to $x$, $y$, $\theta$ during correction?**
 
 Starting from the Kalman gain (Section 1.2.4):
 
@@ -363,7 +371,7 @@ Starting from the Kalman gain (Section 1.2.4):
 K_t = \bar{\Sigma}_t H_t^T (H_t \bar{\Sigma}_t H_t^T + R_t)^{-1}
 ```
 
-With $H_t = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}$:
+With $H = [0, 0, 1]$:
 
 ```math
 H_t \bar{\Sigma}_t H_t^T = \Sigma_{\theta\theta}, \quad \bar{\Sigma}_t H_t^T = \begin{bmatrix} \Sigma_{x\theta} \\ \Sigma_{y\theta} \\ \Sigma_{\theta\theta} \end{bmatrix}
@@ -399,19 +407,19 @@ However, correcting $\theta$ **indirectly improves** position because future pre
 \bar{x}_t = x_{t-1} + v \cos\theta_{t-1} \cdot \Delta t, \quad \bar{y}_t = y_{t-1} + v \sin\theta_{t-1} \cdot \Delta t
 ```
 
-**What happens to θ when we change $Q_t$ and $R_t$?**
+**What happens to $\theta$ when we change Q and R?**
 
-From $K_\theta = \frac{\Sigma_{\theta\theta}}{\Sigma_{\theta\theta} + R_t}$ and $\bar{\Sigma}_{\theta\theta} \approx \Sigma_{\theta\theta,t-1} + Q_{\theta\theta}$:
+From $K_\theta = \Sigma_{\theta\theta} / (\Sigma_{\theta\theta} + R)$ and the covariance prediction $\bar{\Sigma}_{\theta\theta} \approx \Sigma_{\theta\theta} + Q_{\theta\theta}$:
 
 Increasing $Q_{\theta\theta}$ causes $\Sigma_{\theta\theta}$ to grow faster during prediction. A larger $\Sigma_{\theta\theta}$ in the numerator produces a larger $K_\theta$, which applies a stronger correction toward the IMU measurement.
 
-Increasing $R_t$ adds more to the denominator $(\Sigma_{\theta\theta} + R_t)$, which produces a smaller $K_\theta$. A smaller gain means weaker correction and smoother estimates that rely more on prediction.
+Increasing $R$ adds more to the denominator $(\Sigma_{\theta\theta} + R)$, which produces a smaller $K_\theta$. A smaller gain means weaker correction and smoother estimates that rely more on prediction.
 
-The ratio $Q_{\theta\theta}/R_t$ determines filter behavior; doubling both produces identical response.
+The ratio $Q_{\theta\theta}/R$ determines filter behavior; doubling both produces identical response.
 
 **Conclusion**
 
-With only IMU heading as correction source, only $Q_{\theta\theta}$ and $R_t$ affect the state estimate.
+With only IMU heading as correction source, only $Q_{\theta\theta}$ and $R$ affect the state estimate.
 
 For $Q_{xx}$ and $Q_{yy}$, changing these values affects the covariance prediction:
 
@@ -419,9 +427,9 @@ For $Q_{xx}$ and $Q_{yy}$, changing these values affects the covariance predicti
 \bar{\Sigma}_{xx} = \Sigma_{xx,t-1} + Q_{xx}, \quad \bar{\Sigma}_{yy} = \Sigma_{yy,t-1} + Q_{yy}
 ```
 
-However, these covariances do not appear in the Kalman gain $K_t$ because $H_t = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}$ selects only $\Sigma_{\theta\theta}$. The state update $\mu_t = \bar{\mu}_t + K_t y_t$ remains unchanged regardless of $\Sigma_{xx}$ or $\Sigma_{yy}$. Therefore, tuning $Q_{xx}$ or $Q_{yy}$ only inflates the covariance matrix without changing the actual position estimates.
+However, these covariances do not appear in the Kalman gain $K$ because $H = [0, 0, 1]$ selects only $\Sigma_{\theta\theta}$. The state update $\mu = \bar{\mu} + K \cdot y$ remains unchanged regardless of $\Sigma_{xx}$ or $\Sigma_{yy}$. Therefore, tuning $Q_{xx}$ or $Q_{yy}$ only inflates the covariance matrix without changing the actual position estimates.
 
-**Future Extension:** If position measurements were added (e.g., GPS), then $H_t$ would observe x and y, making $K_x$ and $K_y$ non-zero. In that case, $Q_{xx}$ and $Q_{yy}$ would become meaningful tuning parameters
+**Future Extension:** If position measurements were added (e.g., GPS), then $H$ would observe $x$ and $y$, making $K_x$ and $K_y$ non-zero. In that case, $Q_{xx}$ and $Q_{yy}$ would become meaningful tuning parameters.
 
 ### 1.3 Experimental Validation
 
@@ -444,11 +452,60 @@ This section validates the EKF implementation using recorded bag files from a Tu
 **EKF Parameters:**
 | Parameter | Value |
 |-----------|-------|
-| $Q_t$ | diag(0.0, 0.0, 0.01) |
-| $R_t$ | 0.1 |
-| $\Sigma_0$ | diag(0.0, 0.0, 0.1) |
+| Q | diag(0.0, 0.0, 0.01) |
+| R | 0.1 |
+| Σ₀ | diag(0.0, 0.0, 0.1) |
 | Wheel radius | 0.033 m |
 | Track width | 0.160 m |
+
+#### Filter Validation
+
+Without external ground truth, we validate filter correctness using **innovation statistics**.  
+- **Zero-mean**: Prediction matches measurement on average (filter is unbiased)
+- **Small standard deviation**: Consistent with expected sensor noise (filter is consistent)
+
+Validation Reference:
+> "The KF design is considered consistent if the estimation error is unbiased (zero-mean)" - [Normalized Innovation Squared (NIS)](https://kalman-filter.com/normalized-innovation-squared/)
+
+>"The basic idea of covariance-matching techniques is that the sample covariance of innovations should be consistent with its theoretical value" - [Adaptive Kalman Filtering, PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC8638515/)
+
+**Innovation Statistics:**
+
+| Sequence | Mean (°) | Std (°) | Max (°) |
+|----------|----------|---------|---------|
+| seq00 | -0.001 | 0.113 | 0.55 |
+| seq01 | -0.018 | 0.196 | 1.70 |
+| seq02 | -0.003 | 0.119 | 2.36 |
+
+The near-zero mean confirms the filter is unbiased. The small standard deviation (~0.1-0.2°) indicates the prediction closely matches IMU measurements. This validates proper filter operation per the Normalized Innovation Squared (NIS) consistency test, which is the recommended approach when ground truth is unavailable.
+
+#### Trajectory Comparison
+
+**Sequence 00:**
+
+![seq00 trajectory](part1_ekf_odom/figures/seq00/trajectory.png)
+
+**Sequence 01:**
+
+![seq01 trajectory](part1_ekf_odom/figures/seq01/trajectory.png)
+
+**Sequence 02:**
+
+![seq02 trajectory](part1_ekf_odom/figures/seq02/trajectory.png)
+
+#### Time Series Analysis
+
+**Sequence 00:**
+
+![seq00 time series](part1_ekf_odom/figures/seq00/time_series.png)
+
+**Sequence 01:**
+
+![seq01 time series](part1_ekf_odom/figures/seq01/time_series.png)
+
+**Sequence 02:**
+
+![seq02 time series](part1_ekf_odom/figures/seq02/time_series.png)
 
 ---
 
