@@ -21,7 +21,6 @@
       - [1.2.5 Coordinate Frames](#125-coordinate-frames)
       - [1.2.6 Noise Covariance](#126-noise-covariance)
     - [1.3 Experimental Validation](#13-experimental-validation)
-      - [Demo Video (seq00)](#demo-video-seq00)
   - [Part 2: ICP Odometry Refinement](#part-2-icp-odometry-refinement)
   - [Part 3: Full SLAM with slam\_toolbox](#part-3-full-slam-with-slam_toolbox)
   - [Part 4: Results](#part-4-results)
@@ -365,7 +364,9 @@ However, these covariances do not appear in the Kalman gain $K_t$ because $H_t =
 
 #### Demo Video (seq00)
 
-![Part 1 Demo](media/part1_demo.gif)
+<p align="center">
+  <img src="media/part1_demo.gif" width="100%">
+</p>
 
 ---
 
