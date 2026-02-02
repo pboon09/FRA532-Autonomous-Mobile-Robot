@@ -21,6 +21,7 @@
       - [1.2.5 Coordinate Frames](#125-coordinate-frames)
       - [1.2.6 Noise Covariance](#126-noise-covariance)
     - [1.3 Experimental Validation](#13-experimental-validation)
+      - [Experimental Setup](#experimental-setup)
   - [Part 2: ICP Odometry Refinement](#part-2-icp-odometry-refinement)
   - [Part 3: Full SLAM with slam\_toolbox](#part-3-full-slam-with-slam_toolbox)
   - [Part 4: Results](#part-4-results)
@@ -101,7 +102,9 @@ This section presents a sensor fusion approach combining wheel odometry and IMU 
 
 The wheel displacements are computed from encoder position changes:
 
-$$\Delta s_r = \Delta \theta_r \cdot r, \quad \Delta s_l = \Delta \theta_l \cdot r$$
+```math
+\Delta s_r = \Delta \theta_r \cdot r, \quad \Delta s_l = \Delta \theta_l \cdot r
+```
 
 where $\Delta \theta_r$ and $\Delta \theta_l$ represent the angular displacement of the right and left wheels in radians.
 
@@ -111,33 +114,47 @@ For differential drive robots, the ICC method provides accurate pose integration
 
 **Heading change:**
 
-$$\Delta \theta = \frac{\Delta s_r - \Delta s_l}{b}$$
+```math
+\Delta \theta = \frac{\Delta s_r - \Delta s_l}{b}
+```
 
 **Turning radius:**
 
-$$R = \frac{b}{2} \cdot \frac{\Delta s_l + \Delta s_r}{\Delta s_r - \Delta s_l}$$
+```math
+R = \frac{b}{2} \cdot \frac{\Delta s_l + \Delta s_r}{\Delta s_r - \Delta s_l}
+```
 
 **ICC coordinates:**
 
-$$ICC_x = x - R \sin(\theta), \quad ICC_y = y + R \cos(\theta)$$
+```math
+ICC_x = x - R \sin(\theta), \quad ICC_y = y + R \cos(\theta)
+```
 
 **Pose update (general case):**
 
-$$\begin{bmatrix} x' \\ y' \end{bmatrix} = \begin{bmatrix} \cos\Delta\theta & -\sin\Delta\theta \\ \sin\Delta\theta & \cos\Delta\theta \end{bmatrix} \begin{bmatrix} x - ICC_x \\ y - ICC_y \end{bmatrix} + \begin{bmatrix} ICC_x \\ ICC_y \end{bmatrix}$$
+```math
+\begin{bmatrix} x' \\ y' \end{bmatrix} = \begin{bmatrix} \cos\Delta\theta & -\sin\Delta\theta \\ \sin\Delta\theta & \cos\Delta\theta \end{bmatrix} \begin{bmatrix} x - ICC_x \\ y - ICC_y \end{bmatrix} + \begin{bmatrix} ICC_x \\ ICC_y \end{bmatrix}
+```
 
-$$\theta' = \theta + \Delta\theta$$
+```math
+\theta' = \theta + \Delta\theta
+```
 
 **Pose update (straight line, $|\Delta s_r - \Delta s_l| < \epsilon$):**
 
 When the robot moves straight, $R \to \infty$. The pose update simplifies to:
 
-$$x' = x + \frac{\Delta s_l + \Delta s_r}{2} \cos\theta, \quad y' = y + \frac{\Delta s_l + \Delta s_r}{2} \sin\theta$$
+```math
+x' = x + \frac{\Delta s_l + \Delta s_r}{2} \cos\theta, \quad y' = y + \frac{\Delta s_l + \Delta s_r}{2} \sin\theta
+```
 
 #### Robot Velocity
 
 The linear and angular velocities are derived from wheel displacements:
 
-$$v = \frac{\Delta s_r + \Delta s_l}{2 \Delta t}, \quad \omega = \frac{\Delta s_r - \Delta s_l}{b \cdot \Delta t}$$
+```math
+v = \frac{\Delta s_r + \Delta s_l}{2 \Delta t}, \quad \omega = \frac{\Delta s_r - \Delta s_l}{b \cdot \Delta t}
+```
 
 **Position Delta vs Direct Velocity Measurement:**
 
@@ -149,7 +166,9 @@ The robot velocity is computed from **encoder position deltas** rather than the 
 
 The EKF estimates a 3-dimensional state vector:
 
-$$\mu = \begin{bmatrix} x \\ y \\ \theta \end{bmatrix}$$
+```math
+\mu = \begin{bmatrix} x \\ y \\ \theta \end{bmatrix}
+```
 
 | State | Description |
 |-------|-------------|
@@ -175,7 +194,9 @@ In this EKF formulation, velocities are treated as **control inputs**, not state
 
 **Control Input:**
 
-$$u_t = \begin{bmatrix} v \\ \omega \end{bmatrix}$$
+```math
+u_t = \begin{bmatrix} v \\ \omega \end{bmatrix}
+```
 
 **Why use $(v, \omega)$ instead of wheel odometry pose $(x, y, \theta)$?**
 
@@ -183,11 +204,15 @@ Using velocities allows the EKF to **perform its own integration**, maintaining 
 
 **State Transition (Unicycle Model):**
 
-$$\bar{\mu}_t = f(\mu_{t-1}, u_t) = \begin{bmatrix} x + v \cos\theta \cdot \Delta t \\ y + v \sin\theta \cdot \Delta t \\ \theta + \omega \cdot \Delta t \end{bmatrix}$$
+```math
+\bar{\mu}_t = f(\mu_{t-1}, u_t) = \begin{bmatrix} x + v \cos\theta \cdot \Delta t \\ y + v \sin\theta \cdot \Delta t \\ \theta + \omega \cdot \Delta t \end{bmatrix}
+```
 
 **State Jacobian:**
 
-$$F_t = \frac{\partial f}{\partial \mu} = \begin{bmatrix} 1 & 0 & -v \sin\theta \cdot \Delta t \\ 0 & 1 & v \cos\theta \cdot \Delta t \\ 0 & 0 & 1 \end{bmatrix}$$
+```math
+F_t = \frac{\partial f}{\partial \mu} = \begin{bmatrix} 1 & 0 & -v \sin\theta \cdot \Delta t \\ 0 & 1 & v \cos\theta \cdot \Delta t \\ 0 & 0 & 1 \end{bmatrix}
+```
 
 #### 1.2.3 Measurement Model (Correction)
 
@@ -195,7 +220,9 @@ $$F_t = \frac{\partial f}{\partial \mu} = \begin{bmatrix} 1 & 0 & -v \sin\theta 
 
 The IMU provides orientation as a quaternion. Only the yaw component is extracted:
 
-$$z_t = \begin{bmatrix} \theta_{IMU} \end{bmatrix}$$
+```math
+z_t = \begin{bmatrix} \theta_{IMU} \end{bmatrix}
+```
 
 **Why not use wheel odometry $(x, y, \theta)$ as measurements?**
 
@@ -216,44 +243,64 @@ The IMU yaw is zeroed at startup by storing the initial reading as an offset. Al
 
 **Measurement Function:**
 
-$$h(\bar{\mu}_t) = \theta$$
+```math
+h(\bar{\mu}_t) = \theta
+```
 
 **Measurement Jacobian:**
 
-$$H_t = \frac{\partial h}{\partial \mu} = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}$$
+```math
+H_t = \frac{\partial h}{\partial \mu} = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}
+```
 
 #### 1.2.4 EKF Algorithm
 
 **Prediction Step:**
 
 1. State prediction:
-$$\bar{\mu}_t = f(\mu_{t-1}, u_t)$$
+```math
+\bar{\mu}_t = f(\mu_{t-1}, u_t)
+```
 
 2. Covariance prediction:
-$$\bar{\Sigma}_t = F_t \Sigma_{t-1} F_t^T + Q_t$$
+```math
+\bar{\Sigma}_t = F_t \Sigma_{t-1} F_t^T + Q_t
+```
 
 **Correction Step:**
 
-1. Innovation (measurement residual):
-$$y_t = z_t - h(\bar{\mu}_t)$$
+1. Innovation (Measurement Residual):
+```math
+y_t = z_t - h(\bar{\mu}_t)
+```
 
 2. Innovation covariance:
-$$S_t = H_t \bar{\Sigma}_t H_t^T + R_t$$
+```math
+S_t = H_t \bar{\Sigma}_t H_t^T + R_t
+```
 
 3. Kalman gain:
-$$K_t = \bar{\Sigma}_t H_t^T S_t^{-1}$$
+```math
+K_t = \bar{\Sigma}_t H_t^T S_t^{-1}
+```
 
 4. State update:
-$$\mu_t = \bar{\mu}_t + K_t y_t$$
+```math
+\mu_t = \bar{\mu}_t + K_t y_t
+```
 
 5. Covariance update:
-$$\Sigma_t = (I - K_t H_t) \bar{\Sigma}_t$$
+```math
+\Sigma_t = (I - K_t H_t) \bar{\Sigma}_t
+```
 
 **Angle Normalization:**
 
 The heading angle $\theta$ is normalized to $[-\pi, \pi]$ after each update using:
 
-$$\theta = \text{atan2}(\sin\theta, \cos\theta)$$
+```math
+\theta = \text{atan2}(\sin\theta, \cos\theta)
+```
 
 #### 1.2.5 Coordinate Frames
 
@@ -284,7 +331,9 @@ Without noise covariances, the filter cannot balance prediction vs. measurement.
 
 **Covariance Matrices in This Work:**
 
-$$Q_t = \begin{bmatrix} Q_{xx} & 0 & 0 \\ 0 & Q_{yy} & 0 \\ 0 & 0 & Q_{\theta\theta} \end{bmatrix}, \quad R_t = \begin{bmatrix} R_{\theta\theta} \end{bmatrix}$$
+```math
+Q_t = \begin{bmatrix} Q_{xx} & 0 & 0 \\ 0 & Q_{yy} & 0 \\ 0 & 0 & Q_{\theta\theta} \end{bmatrix}, \quad R_t = \begin{bmatrix} R_{\theta\theta} \end{bmatrix}
+```
 
 **Trust Interpretation:**
 
@@ -310,13 +359,19 @@ Wheel odometry cannot be a measurement because it already defines the motion mod
 
 Starting from the Kalman gain (Section 1.2.4):
 
-$$K_t = \bar{\Sigma}_t H_t^T (H_t \bar{\Sigma}_t H_t^T + R_t)^{-1}$$
+```math
+K_t = \bar{\Sigma}_t H_t^T (H_t \bar{\Sigma}_t H_t^T + R_t)^{-1}
+```
 
 With $H_t = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}$:
 
-$$H_t \bar{\Sigma}_t H_t^T = \Sigma_{\theta\theta}, \quad \bar{\Sigma}_t H_t^T = \begin{bmatrix} \Sigma_{x\theta} \\ \Sigma_{y\theta} \\ \Sigma_{\theta\theta} \end{bmatrix}$$
+```math
+H_t \bar{\Sigma}_t H_t^T = \Sigma_{\theta\theta}, \quad \bar{\Sigma}_t H_t^T = \begin{bmatrix} \Sigma_{x\theta} \\ \Sigma_{y\theta} \\ \Sigma_{\theta\theta} \end{bmatrix}
+```
 
-$$\therefore K_t = \begin{bmatrix} K_x \\ K_y \\ K_\theta \end{bmatrix} = \begin{bmatrix} \frac{\Sigma_{x\theta}}{\Sigma_{\theta\theta} + R_t} \\ \frac{\Sigma_{y\theta}}{\Sigma_{\theta\theta} + R_t} \\ \frac{\Sigma_{\theta\theta}}{\Sigma_{\theta\theta} + R_t} \end{bmatrix}$$
+```math
+\therefore K_t = \begin{bmatrix} K_x \\ K_y \\ K_\theta \end{bmatrix} = \begin{bmatrix} \frac{\Sigma_{x\theta}}{\Sigma_{\theta\theta} + R_t} \\ \frac{\Sigma_{y\theta}}{\Sigma_{\theta\theta} + R_t} \\ \frac{\Sigma_{\theta\theta}}{\Sigma_{\theta\theta} + R_t} \end{bmatrix}
+```
 
 Since cross-covariances $\Sigma_{x\theta}, \Sigma_{y\theta} \approx 0$, we have $K_x \approx 0$ and $K_y \approx 0$.
 
@@ -326,17 +381,23 @@ Since cross-covariances $\Sigma_{x\theta}, \Sigma_{y\theta} \approx 0$, we have 
 
 From the state update:
 
-$$\mu_t = \bar{\mu}_t + K_t y_t$$
+```math
+\mu_t = \bar{\mu}_t + K_t y_t
+```
 
 With $K_x \approx 0$, $K_y \approx 0$:
 
-$$x_t \approx \bar{x}_t, \quad y_t \approx \bar{y}_t$$
+```math
+x_t \approx \bar{x}_t, \quad y_t \approx \bar{y}_t
+```
 
 Position states follow the **prediction exactly** (wheel odometry integration). The EKF does not correct position directly.
 
 However, correcting $\theta$ **indirectly improves** position because future predictions use the corrected heading:
 
-$$\bar{x}_t = x_{t-1} + v \cos\theta_{t-1} \cdot \Delta t, \quad \bar{y}_t = y_{t-1} + v \sin\theta_{t-1} \cdot \Delta t$$
+```math
+\bar{x}_t = x_{t-1} + v \cos\theta_{t-1} \cdot \Delta t, \quad \bar{y}_t = y_{t-1} + v \sin\theta_{t-1} \cdot \Delta t
+```
 
 **What happens to θ when we change $Q_t$ and $R_t$?**
 
@@ -354,7 +415,9 @@ With only IMU heading as correction source, only $Q_{\theta\theta}$ and $R_t$ af
 
 For $Q_{xx}$ and $Q_{yy}$, changing these values affects the covariance prediction:
 
-$$\bar{\Sigma}_{xx} = \Sigma_{xx,t-1} + Q_{xx}, \quad \bar{\Sigma}_{yy} = \Sigma_{yy,t-1} + Q_{yy}$$
+```math
+\bar{\Sigma}_{xx} = \Sigma_{xx,t-1} + Q_{xx}, \quad \bar{\Sigma}_{yy} = \Sigma_{yy,t-1} + Q_{yy}
+```
 
 However, these covariances do not appear in the Kalman gain $K_t$ because $H_t = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}$ selects only $\Sigma_{\theta\theta}$. The state update $\mu_t = \bar{\mu}_t + K_t y_t$ remains unchanged regardless of $\Sigma_{xx}$ or $\Sigma_{yy}$. Therefore, tuning $Q_{xx}$ or $Q_{yy}$ only inflates the covariance matrix without changing the actual position estimates.
 
@@ -362,11 +425,30 @@ However, these covariances do not appear in the Kalman gain $K_t$ because $H_t =
 
 ### 1.3 Experimental Validation
 
-#### Demo Video (seq00)
-
 <p align="center">
   <img src="media/part1_demo.gif" width="100%">
 </p>
+
+
+This section validates the EKF implementation using recorded bag files from a TurtleBot3 Burger navigating FIBO Floor 3 corridors.
+
+#### Experimental Setup
+
+**Dataset:**
+| Sequence | Description | Duration | Samples |
+|----------|-------------|----------|---------|
+| seq00 | Empty hallway | 525s | 10,504 |
+| seq01 | Non-empty hallway with sharp turns | 393s | 7,854 |
+| seq02 | Non-empty hallway with non-aggressive motion | 599s | 11,975 |
+
+**EKF Parameters:**
+| Parameter | Value |
+|-----------|-------|
+| $Q_t$ | diag(0.0, 0.0, 0.01) |
+| $R_t$ | 0.1 |
+| $\Sigma_0$ | diag(0.0, 0.0, 0.1) |
+| Wheel radius | 0.033 m |
+| Track width | 0.160 m |
 
 ---
 
