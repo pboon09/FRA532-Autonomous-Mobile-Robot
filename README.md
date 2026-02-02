@@ -365,7 +365,7 @@ However, these covariances do not appear in the Kalman gain $K_t$ because $H_t =
 
 #### Demo Video (seq00)
 
-https://github.com/pboon09/FRA532-Autonomous-Mobile-Robot/raw/lab1/media/part1_demo.mp4
+![Part 1 Demo](media/part1_demo.gif)
 
 ---
 
