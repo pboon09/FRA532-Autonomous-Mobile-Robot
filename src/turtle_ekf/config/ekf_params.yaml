@@ -6,10 +6,8 @@ turtle_ekf_node:
     odom_topic: "/wheel_odom"
     imu_topic: "/imu"
 
-    process_noise_covariance: [0.001, 0.001, 0.01]
-
-    initial_estimate_covariance: [0.1, 0.1, 0.1]
-
+    process_noise_covariance: [0.0, 0.0, 0.01]
+    initial_estimate_covariance: [0.0, 0.0, 0.1]
     imu_theta_covariance: 0.1
 
     use_imu_orientation: true
