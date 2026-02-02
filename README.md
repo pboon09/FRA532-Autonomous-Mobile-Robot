@@ -8,17 +8,19 @@
   - [Setup](#setup)
     - [Running](#running)
   - [Part 1: EKF Odometry Fusion](#part-1-ekf-odometry-fusion)
-    - [Overview](#overview)
-    - [1.1 Wheel Odometry from Joint States](#11-wheel-odometry-from-joint-states)
+    - [1.1 Wheel Odometry](#11-wheel-odometry)
+      - [Robot Parameters](#robot-parameters)
       - [Wheel Displacement](#wheel-displacement)
       - [ICC (Instantaneous Center of Curvature) Kinematics](#icc-instantaneous-center-of-curvature-kinematics)
       - [Robot Velocity](#robot-velocity)
-    - [1.2 Odometry Covariance Model](#12-odometry-covariance-model)
-      - [Step-by-Step Matrix Calculation](#step-by-step-matrix-calculation)
-    - [1.3 Twist Covariance](#13-twist-covariance)
-      - [Step-by-Step Matrix Calculation](#step-by-step-matrix-calculation-1)
-    - [1.4 Extended Kalman Filter](#14-extended-kalman-filter)
-    - [1.5 Implementation](#15-implementation)
+    - [1.2 Extended Kalman Filter](#12-extended-kalman-filter)
+      - [1.2.1 State Vector Design](#121-state-vector-design)
+      - [1.2.2 Motion Model (Prediction)](#122-motion-model-prediction)
+      - [1.2.3 Measurement Model (Correction)](#123-measurement-model-correction)
+      - [1.2.4 EKF Algorithm](#124-ekf-algorithm)
+      - [1.2.5 Coordinate Frames](#125-coordinate-frames)
+      - [1.2.6 Noise Covariance](#126-noise-covariance)
+    - [1.3 Experimental Validation](#13-experimental-validation)
   - [Part 2: ICP Odometry Refinement](#part-2-icp-odometry-refinement)
   - [Part 3: Full SLAM with slam\_toolbox](#part-3-full-slam-with-slam_toolbox)
   - [Part 4: Results](#part-4-results)
@@ -81,32 +83,31 @@ ros2 bag play FRA532_LAB1_DATASET/fibo_floor3_seq02 --clock
 
 ## Part 1: EKF Odometry Fusion
 
-### Overview
-
-This part implements sensor fusion between wheel odometry and IMU using an Extended Kalman Filter (EKF).
+This section presents a sensor fusion approach combining wheel odometry and IMU orientation using an Extended Kalman Filter (EKF). The wheel odometry provides position and velocity estimates through encoder measurements, while the IMU supplies heading corrections to compensate for accumulated drift.
 
 **References:**
-- **Forward Kinematics (ICC Method):** Columbia University CS4733 Lecture Notes - [ICC Kinematics](https://www.cs.columbia.edu/~allen/F17/NOTES/icckinematics.pdf)
-- **Covariance Propagation:** Correll, N. (2022). *Introduction to Autonomous Robots*. Chapter 8: Uncertainty and Error Propagation - [Error Propagation](https://eng.libretexts.org/Bookshelves/Mechanical_Engineering/Introduction_to_Autonomous_Robots_(Correll)/08:_Uncertainty_and_Error_Propagation/8.02:_Error_Propogation)
-- **Odometry Error Model:** Chong, K. S., & Kleeman, L. (1997). *Accurate Odometry and Error Modelling for a Mobile Robot* - [PDF](https://www.cs.cmu.edu/~motionplanning/papers/sbp_papers/kalman/chong_accurate_odometry_error.pdf)
+- Columbia University CS4733 - [ICC Kinematics](https://www.cs.columbia.edu/~allen/F17/NOTES/icckinematics.pdf)
 
-### 1.1 Wheel Odometry from Joint States
+### 1.1 Wheel Odometry
 
-We compute wheel odometry from `/joint_states` which provides wheel encoder positions and velocities at 20 Hz.
+#### Robot Parameters
+
+| Parameter | Symbol | Value | Description |
+|-----------|--------|-------|-------------|
+| Wheel radius | $r$ | 0.033 m | TurtleBot3 Burger wheel radius |
+| Track width | $b$ | 0.160 m | Distance between wheel centers |
 
 #### Wheel Displacement
 
-$$\Delta s_r = \Delta \theta_r \cdot r$$
+The wheel displacements are computed from encoder position changes:
 
-$$\Delta s_l = \Delta \theta_l \cdot r$$
+$$\Delta s_r = \Delta \theta_r \cdot r, \quad \Delta s_l = \Delta \theta_l \cdot r$$
 
-Where:
-- $\Delta \theta_r, \Delta \theta_l$ = change in wheel encoder positions (radians)
-- $r$ = wheel radius (0.033 m for TurtleBot3 Burger)
+where $\Delta \theta_r$ and $\Delta \theta_l$ represent the angular displacement of the right and left wheels in radians.
 
 #### ICC (Instantaneous Center of Curvature) Kinematics
 
-For differential drive robots, we use the ICC method for accurate pose integration:
+For differential drive robots, the ICC method provides accurate pose integration by computing the instantaneous turning center.
 
 **Heading change:**
 
@@ -116,293 +117,250 @@ $$\Delta \theta = \frac{\Delta s_r - \Delta s_l}{b}$$
 
 $$R = \frac{b}{2} \cdot \frac{\Delta s_l + \Delta s_r}{\Delta s_r - \Delta s_l}$$
 
-**ICC point:**
+**ICC coordinates:**
 
-$$ICC_x = x - R \cdot \sin(\theta)$$
+$$ICC_x = x - R \sin(\theta), \quad ICC_y = y + R \cos(\theta)$$
 
-$$ICC_y = y + R \cdot \cos(\theta)$$
+**Pose update (general case):**
 
-**Pose update:**
-
-$$\begin{bmatrix} x' \\ y' \end{bmatrix} = \begin{bmatrix} \cos(\Delta\theta) & -\sin(\Delta\theta) \\ \sin(\Delta\theta) & \cos(\Delta\theta) \end{bmatrix} \begin{bmatrix} x - ICC_x \\ y - ICC_y \end{bmatrix} + \begin{bmatrix} ICC_x \\ ICC_y \end{bmatrix}$$
+$$\begin{bmatrix} x' \\ y' \end{bmatrix} = \begin{bmatrix} \cos\Delta\theta & -\sin\Delta\theta \\ \sin\Delta\theta & \cos\Delta\theta \end{bmatrix} \begin{bmatrix} x - ICC_x \\ y - ICC_y \end{bmatrix} + \begin{bmatrix} ICC_x \\ ICC_y \end{bmatrix}$$
 
 $$\theta' = \theta + \Delta\theta$$
 
-**Special case (straight line, $|\Delta s_r - \Delta s_l| < \epsilon$):**
+**Pose update (straight line, $|\Delta s_r - \Delta s_l| < \epsilon$):**
 
-When the robot moves straight, $R \to \infty$ and we use:
+When the robot moves straight, $R \to \infty$. The pose update simplifies to:
 
-$$\begin{bmatrix} x' \\ y' \end{bmatrix} = \begin{bmatrix} x \\ y \end{bmatrix} + \frac{\Delta s_l + \Delta s_r}{2} \begin{bmatrix} \cos(\theta) \\ \sin(\theta) \end{bmatrix}$$
-
-Where $b$ = track width (0.160 m for TurtleBot3 Burger).
+$$x' = x + \frac{\Delta s_l + \Delta s_r}{2} \cos\theta, \quad y' = y + \frac{\Delta s_l + \Delta s_r}{2} \sin\theta$$
 
 #### Robot Velocity
 
-$$v = \frac{v_r + v_l}{2}$$
+The linear and angular velocities are derived from wheel displacements:
 
-$$\omega = \frac{v_r - v_l}{b}$$
+$$v = \frac{\Delta s_r + \Delta s_l}{2 \Delta t}, \quad \omega = \frac{\Delta s_r - \Delta s_l}{b \cdot \Delta t}$$
 
-### 1.2 Odometry Covariance Model
+**Position Delta vs Direct Velocity Measurement:**
 
-We implement a wheel-level error model using standard EKF Jacobian-based covariance propagation:
+The robot velocity is computed from **encoder position deltas** rather than the velocity field in JointState messages. This approach is preferred because encoder position is the **primary data source** from the hardware. The JointState velocity field is not used for two reasons: first, it **may be empty or unavailable** depending on the robot configuration; second, when present, the velocity is **already derived from position deltas**, so using it would add an unnecessary layer of indirection.
 
-$$\Sigma_{p'} = F_p \cdot \Sigma_p \cdot F_p^T + F_{\Delta} \cdot \Sigma_{\Delta} \cdot F_{\Delta}^T$$
+### 1.2 Extended Kalman Filter
 
-#### Step-by-Step Matrix Calculation
+#### 1.2.1 State Vector Design
 
-**Given values at each timestep:**
-- $\Delta s_r$, $\Delta s_l$ = wheel displacements (meters)
-- $\Delta\theta = \frac{\Delta s_r - \Delta s_l}{b}$ = heading change
-- $\theta_{mid} = \theta + \frac{\Delta\theta}{2}$ = midpoint heading
-- $k_r = k_l = 0.1$ = slip coefficients
+The EKF estimates a 3-dimensional state vector:
 
----
-
-**Step 1: Build Pose Jacobian $F_p$ (3×3)**
-
-$F_p$ is the Jacobian of the new pose with respect to the previous pose:
-
-$$F_p = \begin{bmatrix} \frac{\partial x'}{\partial x} & \frac{\partial x'}{\partial y} & \frac{\partial x'}{\partial \theta} \\ \frac{\partial y'}{\partial x} & \frac{\partial y'}{\partial y} & \frac{\partial y'}{\partial \theta} \\ \frac{\partial \theta'}{\partial x} & \frac{\partial \theta'}{\partial y} & \frac{\partial \theta'}{\partial \theta} \end{bmatrix}$$
-
-From the rotation matrix in pose update, taking partial derivatives:
-
-$$F_p = \begin{bmatrix} \cos(\Delta\theta) & -\sin(\Delta\theta) & 0 \\ \sin(\Delta\theta) & \cos(\Delta\theta) & 0 \\ 0 & 0 & 1 \end{bmatrix}$$
-
----
-
-**Step 2: Build Wheel Displacement Jacobian $F_{\Delta}$ (3×2)**
-
-$F_{\Delta}$ is the Jacobian of pose change with respect to wheel displacements $[\Delta s_r, \Delta s_l]^T$.
-
-Using midpoint approximation for pose change:
-- $\Delta x \approx \frac{\Delta s_r + \Delta s_l}{2} \cos(\theta_{mid})$
-- $\Delta y \approx \frac{\Delta s_r + \Delta s_l}{2} \sin(\theta_{mid})$
-- $\Delta \theta = \frac{\Delta s_r - \Delta s_l}{b}$
-
-Taking partial derivatives:
-
-$$F_{\Delta} = \begin{bmatrix} \frac{\partial \Delta x}{\partial \Delta s_r} & \frac{\partial \Delta x}{\partial \Delta s_l} \\ \frac{\partial \Delta y}{\partial \Delta s_r} & \frac{\partial \Delta y}{\partial \Delta s_l} \\ \frac{\partial \Delta \theta}{\partial \Delta s_r} & \frac{\partial \Delta \theta}{\partial \Delta s_l} \end{bmatrix} = \begin{bmatrix} \frac{\cos(\theta_{mid})}{2} & \frac{\cos(\theta_{mid})}{2} \\ \frac{\sin(\theta_{mid})}{2} & \frac{\sin(\theta_{mid})}{2} \\ \frac{1}{b} & -\frac{1}{b} \end{bmatrix}$$
-
----
-
-**Step 3: Build Wheel Covariance $\Sigma_{\Delta}$ (2×2)**
-
-$$\Sigma_{\Delta} = \begin{bmatrix} k_r \cdot |\Delta s_r| + \epsilon & 0 \\ 0 & k_l \cdot |\Delta s_l| + \epsilon \end{bmatrix}$$
-
-Where $\epsilon = 10^{-6}$ prevents singularity.
-
----
-
-**Step 4: Propagate Previous Covariance**
-
-$$\text{Term}_1 = F_p \cdot \Sigma_p \cdot F_p^T$$
-
-This rotates the previous pose covariance by $\Delta\theta$.
-
----
-
-**Step 5: Add Process Noise from Wheels**
-
-$$\text{Term}_2 = F_{\Delta} \cdot \Sigma_{\Delta} \cdot F_{\Delta}^T$$
-
----
-
-**Step 6: Final Covariance Update**
-
-$$\Sigma_{p'} = \text{Term}_1 + \text{Term}_2$$
-
-The result is a (3×3) covariance matrix:
-$$\Sigma_{p'} = \begin{bmatrix} \sigma_x^2 & \sigma_{xy} & \sigma_{x\theta} \\ \sigma_{xy} & \sigma_y^2 & \sigma_{y\theta} \\ \sigma_{x\theta} & \sigma_{y\theta} & \sigma_\theta^2 \end{bmatrix}$$
-
-For ROS Odometry message, we extract diagonal elements:
-- `pose.covariance[0]` = $\sigma_x^2$
-- `pose.covariance[7]` = $\sigma_y^2$
-- `pose.covariance[35]` = $\sigma_\theta^2$
-
-### 1.3 Twist Covariance
-
-For instantaneous velocity covariance, we use the same Jacobian-based error propagation:
-
-$$\Sigma_{twist} = J_{vel} \cdot \Sigma_{wheel} \cdot J_{vel}^T$$
-
-#### Step-by-Step Matrix Calculation
-
-**Given values:**
-- $v_r = \omega_r \cdot r$ = right wheel linear velocity
-- $v_l = \omega_l \cdot r$ = left wheel linear velocity
-- $b = 0.160$ m = track width
-- $k_r = k_l = 0.1$ = slip coefficients
-
----
-
-**Step 1: Build Velocity Jacobian $J_{vel}$ (3×2)**
-
-Maps wheel velocities $[v_r, v_l]^T$ to robot velocities $[v_x, v_y, \omega]^T$:
-
-$$J_{vel} = \begin{bmatrix} \frac{\partial v_x}{\partial v_r} & \frac{\partial v_x}{\partial v_l} \\ \frac{\partial v_y}{\partial v_r} & \frac{\partial v_y}{\partial v_l} \\ \frac{\partial \omega}{\partial v_r} & \frac{\partial \omega}{\partial v_l} \end{bmatrix}$$
-
-From the velocity equations $v_x = \frac{v_r + v_l}{2}$ and $\omega = \frac{v_r - v_l}{b}$:
-
-$$J_{vel} = \begin{bmatrix} \frac{1}{2} & \frac{1}{2} \\ 0 & 0 \\ \frac{1}{b} & -\frac{1}{b} \end{bmatrix}$$
-
----
-
-**Step 2: Build Wheel Velocity Covariance $\Sigma_{wheel}$ (2×2)**
-
-$$\Sigma_{wheel} = \begin{bmatrix} k_r \cdot |v_r| + \epsilon & 0 \\ 0 & k_l \cdot |v_l| + \epsilon \end{bmatrix}$$
-
----
-
-**Step 3: Compute Final Twist Covariance (3×3)**
-
-$$\Sigma_{twist} = J_{vel} \cdot \Sigma_{wheel} \cdot J_{vel}^T$$
-
----
-
-**Step 4: Extract for ROS Message**
-
-For ROS Odometry twist covariance (6×6 matrix as 36-element array):
-- `twist.covariance[0]` = $\sigma_{v_x}^2$
-- `twist.covariance[7]` = $\sigma_{v_y}^2$ (0 for diff-drive, no lateral motion)
-- `twist.covariance[35]` = $\sigma_\omega^2$
-
-### 1.4 Extended Kalman Filter
-
-#### State Definition
-
-We define a **3-state EKF** for differential drive robot localization:
-
-$$\mathbf{x} = \begin{bmatrix} x \\ y \\ \theta \end{bmatrix}$$
+$$\mu = \begin{bmatrix} x \\ y \\ \theta \end{bmatrix}$$
 
 | State | Description |
 |-------|-------------|
-| $x$ | Position in x-axis (meters) |
-| $y$ | Position in y-axis (meters) |
-| $\theta$ | Heading angle (radians) |
+| $x$ | Position in x-axis (m) |
+| $y$ | Position in y-axis (m) |
+| $\theta$ | Heading angle (rad) |
 
-**Why only 3 states?**
+**Why these 3 states?**
+- A ground robot is constrained to planar motion, so only 2D position and heading are needed
+- Roll, pitch, and z-height are assumed constant (flat floor assumption)
+- These states fully describe the robot's configuration in the odom frame
 
-For a differential drive robot, velocities $(v, \omega)$ are **directly measured** from wheel encoders, not estimated. Adding velocity states would:
-- Increase computational complexity without benefit
-- Add noise from redundant state estimation
-- Create coupling issues between measured and estimated velocities
+**Why not include velocities $(v, \omega)$?**
 
-The 3-state model is optimal because wheel odometry provides accurate velocity measurements directly.
+In this EKF formulation, velocities are treated as **control inputs**, not states:
+- Wheel encoders directly measure $(v, \omega)$
+- The EKF uses these as inputs to the motion model (prediction step)
+- To estimate velocities as states, we would need **independent velocity measurements** for the correction step
+- Since the IMU only provides heading $\theta$, there is no velocity measurement to fuse
+- Including unmeasured states would only add uncertainty without improving the estimate
 
-#### Input (Control) from Wheel Odometry
+#### 1.2.2 Motion Model (Prediction)
 
-The EKF uses velocity from wheel odometry as **control input**, not as state:
+**Control Input:**
 
-$$\mathbf{u} = \begin{bmatrix} v \\ \omega \end{bmatrix}$$
+$$u_t = \begin{bmatrix} v \\ \omega \end{bmatrix}$$
 
-Where:
-- $v = \frac{\Delta s_l + \Delta s_r}{2 \cdot \Delta t}$ = linear velocity (m/s)
-- $\omega = \frac{\Delta s_r - \Delta s_l}{b \cdot \Delta t}$ = angular velocity (rad/s)
+**Why use $(v, \omega)$ instead of wheel odometry pose $(x, y, \theta)$?**
 
-**Why use position delta / dt instead of angular velocity directly?**
+Using velocities allows the EKF to **perform its own integration**, maintaining a separate state that can be **corrected by IMU**. Using the integrated pose directly would **replace** the EKF state with wheel odometry, **bypassing fusion** entirely.
 
-The velocity must be computed from position deltas because:
-1. **Consistency:** Pose is computed from position deltas, so velocity must match
-2. **Timing:** Our timer may skip joint_states messages; position delta captures total motion
-3. **Reliability:** Angular velocity field may be empty in some bags/simulators
+**State Transition (Unicycle Model):**
 
-#### Measurement from IMU
+$$\bar{\mu}_t = f(\mu_{t-1}, u_t) = \begin{bmatrix} x + v \cos\theta \cdot \Delta t \\ y + v \sin\theta \cdot \Delta t \\ \theta + \omega \cdot \Delta t \end{bmatrix}$$
 
-The IMU provides orientation as a quaternion. We extract only **yaw angle** as measurement:
+**State Jacobian:**
 
-$$\mathbf{z} = \begin{bmatrix} \theta_{IMU} \end{bmatrix}$$
+$$F_t = \frac{\partial f}{\partial \mu} = \begin{bmatrix} 1 & 0 & -v \sin\theta \cdot \Delta t \\ 0 & 1 & v \cos\theta \cdot \Delta t \\ 0 & 0 & 1 \end{bmatrix}$$
 
-**Why only yaw from IMU?**
+#### 1.2.3 Measurement Model (Correction)
 
-| IMU Data | Used? | Reason |
-|----------|-------|--------|
-| Orientation (yaw) | ✅ | Absolute heading reference, corrects wheel odometry drift |
-| Orientation (roll, pitch) | ❌ | Ground robot assumes planar motion |
-| Angular velocity | ❌ | Wheel encoders provide more accurate $\omega$ |
-| Linear acceleration | ❌ | Requires double integration (drift), wheel odometry is better |
+**Measurement Vector:**
 
-The IMU yaw is valuable because:
-- It provides an **absolute heading reference** (from magnetometer/gyro fusion)
-- Wheel odometry heading drifts over time due to wheel slip
-- IMU orientation is independent of wheel slip errors
+The IMU provides orientation as a quaternion. Only the yaw component is extracted:
 
-#### Prediction Step
+$$z_t = \begin{bmatrix} \theta_{IMU} \end{bmatrix}$$
 
-Using velocity motion model:
+**Why not use wheel odometry $(x, y, \theta)$ as measurements?**
 
-$$\mathbf{x}_{k|k-1} = f(\mathbf{x}_{k-1}, \mathbf{u}_k) = \begin{bmatrix} x + v \cdot \cos(\theta) \cdot \Delta t \\ y + v \cdot \sin(\theta) \cdot \Delta t \\ \theta + \omega \cdot \Delta t \end{bmatrix}$$
+Wheel odometry pose is derived from the **same encoder data** used in prediction. Using it as a measurement would **double-count** the same information. Measurements must come from **independent sensors**. The IMU provides heading independently of wheel encoders.
 
-**State Jacobian** $F$ (derivative of $f$ with respect to state):
+**IMU Data Selection:**
 
-$$F = \frac{\partial f}{\partial \mathbf{x}} = \begin{bmatrix} 1 & 0 & -v \cdot \sin(\theta) \cdot \Delta t \\ 0 & 1 & v \cdot \cos(\theta) \cdot \Delta t \\ 0 & 0 & 1 \end{bmatrix}$$
+| IMU Data | Used | Rationale |
+|----------|------|-----------|
+| Orientation (yaw) | Yes | Heading reference independent of wheel slip |
+| Orientation (roll, pitch) | No | Ground robot assumes planar motion |
+| Angular velocity | No | Wheel encoders provide more accurate $\omega$ |
+| Linear acceleration | No | Double integration causes drift; wheel odometry is superior |
 
-**Covariance Prediction:**
+**IMU Offset Handling:**
 
-$$P_{k|k-1} = F \cdot P_{k-1} \cdot F^T + Q$$
+The IMU yaw is zeroed at startup by storing the initial reading as an offset. All subsequent measurements are relative to this initial heading, aligning the IMU frame with the odometry frame.
 
-Where $Q$ is the **process noise covariance** (represents unmodeled dynamics like wheel slip):
+**Measurement Function:**
 
-$$Q = \begin{bmatrix} \sigma_x^2 & 0 & 0 \\ 0 & \sigma_y^2 & 0 \\ 0 & 0 & \sigma_\theta^2 \end{bmatrix} = \begin{bmatrix} 0.001 & 0 & 0 \\ 0 & 0.001 & 0 \\ 0 & 0 & 0.01 \end{bmatrix}$$
+$$h(\bar{\mu}_t) = \theta$$
 
-#### Correction Step
+**Measurement Jacobian:**
 
-When IMU measurement is received:
+$$H_t = \frac{\partial h}{\partial \mu} = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}$$
 
-**Innovation (measurement residual):**
+#### 1.2.4 EKF Algorithm
 
-$$y = z - H \cdot \mathbf{x}_{k|k-1} = \theta_{IMU} - \theta_{predicted}$$
+**Prediction Step:**
 
-**Measurement Jacobian** $H$ (maps state to measurement):
+1. State prediction:
+$$\bar{\mu}_t = f(\mu_{t-1}, u_t)$$
 
-$$H = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}$$
+2. Covariance prediction:
+$$\bar{\Sigma}_t = F_t \Sigma_{t-1} F_t^T + Q_t$$
 
-This selects only $\theta$ from the state vector.
+**Correction Step:**
 
-**Innovation Covariance:**
+1. Innovation (measurement residual):
+$$y_t = z_t - h(\bar{\mu}_t)$$
 
-$$S = H \cdot P_{k|k-1} \cdot H^T + R$$
+2. Innovation covariance:
+$$S_t = H_t \bar{\Sigma}_t H_t^T + R_t$$
 
-Where $R$ is the **measurement noise covariance** (IMU yaw uncertainty):
+3. Kalman gain:
+$$K_t = \bar{\Sigma}_t H_t^T S_t^{-1}$$
 
-$$R = \begin{bmatrix} 0.1 \end{bmatrix}$$
+4. State update:
+$$\mu_t = \bar{\mu}_t + K_t y_t$$
 
-**Kalman Gain:**
+5. Covariance update:
+$$\Sigma_t = (I - K_t H_t) \bar{\Sigma}_t$$
 
-$$K = P_{k|k-1} \cdot H^T \cdot S^{-1}$$
+**Angle Normalization:**
 
-**State Update:**
+The heading angle $\theta$ is normalized to $[-\pi, \pi]$ after each update using:
 
-$$\mathbf{x}_k = \mathbf{x}_{k|k-1} + K \cdot y$$
+$$\theta = \text{atan2}(\sin\theta, \cos\theta)$$
 
-**Covariance Update:**
+#### 1.2.5 Coordinate Frames
 
-$$P_k = (I - K \cdot H) \cdot P_{k|k-1}$$
+**Frame Tree:**
 
-#### Noise Covariance Summary
+```
+odom (world-fixed, drifts over time)
+  │
+  └──► base_footprint (robot body frame)
+          │
+          └──► base_link, sensors, wheels...
+```
 
-| Parameter | Symbol | Value | Meaning |
-|-----------|--------|-------|---------|
-| Process Noise (x, y) | $Q_{xx}, Q_{yy}$ | 0.001 | Trust in motion model position |
-| Process Noise (θ) | $Q_{\theta\theta}$ | 0.01 | Trust in motion model heading |
-| Measurement Noise | $R$ | 0.1 | Trust in IMU yaw measurement |
-| Initial Covariance | $P_0$ | diag(0.1, 0.1, 0.1) | Initial state uncertainty |
+The EKF publishes the `odom → base_footprint` transform because the estimate is based solely on wheel odometry and IMU, which accumulate drift over time. The `map` frame would imply global accuracy, which requires external localization (SLAM, GPS).
 
-**Tuning Guidelines:**
-- **Higher Q** → Less trust in wheel odometry, more reliance on IMU
-- **Higher R** → Less trust in IMU, more reliance on wheel odometry
-- **Balance** depends on sensor quality and environment
+#### 1.2.6 Noise Covariance
 
-### 1.5 Implementation
+**What is Process and Measurement Noise?**
 
-The wheel odometry node is implemented in Python:
-- **File:** `src/turtle_odometry/scripts/turtle_wheel_odometry.py`
-- **Input:** `/joint_states` (sensor_msgs/JointState)
-- **Output:** `/odom` (nav_msgs/Odometry)
+The Kalman filter models two sources of uncertainty:
 
-The EKF node is implemented in C++:
-- **File:** `src/turtle_ekf/src/ekf_node.cpp`
-- **Input:** `/odom`, `/imu`
-- **Output:** `/odometry/filtered`, TF: `odom` -> `base_footprint`
+| Noise Type | Symbol | Source | Purpose |
+|------------|--------|--------|---------|
+| **Process Noise** | $Q_t$ | Motion model imperfection | Accounts for unmodeled dynamics (wheel slip, terrain variation) |
+| **Measurement Noise** | $R_t$ | Sensor imperfection | Accounts for sensor noise and bias |
+
+Without noise covariances, the filter cannot balance prediction vs. measurement. $Q_t$ represents how much we **distrust** the motion model per timestep; $R_t$ represents how much we **distrust** the sensor measurement.
+
+**Covariance Matrices in This Work:**
+
+$$Q_t = \begin{bmatrix} Q_{xx} & 0 & 0 \\ 0 & Q_{yy} & 0 \\ 0 & 0 & Q_{\theta\theta} \end{bmatrix}, \quad R_t = \begin{bmatrix} R_{\theta\theta} \end{bmatrix}$$
+
+**Trust Interpretation:**
+
+| Value | Meaning |
+|-------|---------|
+| Lower $Q_t$ | More trust in motion model (prediction) |
+| Higher $Q_t$ | Less trust in motion model, faster response to measurement |
+| Lower $R_t$ | More trust in measurement |
+| Higher $R_t$ | Less trust in measurement, smoother estimate, relies more on prediction |
+
+**What Really Affects the Estimate in This 3-State Model?**
+
+The IMU measures **only heading $\theta$**, which determines which states can be corrected.
+
+**Why Only One Correction Source?**
+
+- **Wheel odometry** $(v, \omega)$ drives the **prediction step** as control input
+- **IMU** $\theta$ drives the **correction step** as measurement
+
+Wheel odometry cannot be a measurement because it already defines the motion model. Using it for both would double-count information.
+
+**What happens to x, y, θ during correction?**
+
+Starting from the Kalman gain (Section 1.2.4):
+
+$$K_t = \bar{\Sigma}_t H_t^T (H_t \bar{\Sigma}_t H_t^T + R_t)^{-1}$$
+
+With $H_t = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}$:
+
+$$H_t \bar{\Sigma}_t H_t^T = \Sigma_{\theta\theta}, \quad \bar{\Sigma}_t H_t^T = \begin{bmatrix} \Sigma_{x\theta} \\ \Sigma_{y\theta} \\ \Sigma_{\theta\theta} \end{bmatrix}$$
+
+$$\therefore K_t = \begin{bmatrix} K_x \\ K_y \\ K_\theta \end{bmatrix} = \begin{bmatrix} \frac{\Sigma_{x\theta}}{\Sigma_{\theta\theta} + R_t} \\ \frac{\Sigma_{y\theta}}{\Sigma_{\theta\theta} + R_t} \\ \frac{\Sigma_{\theta\theta}}{\Sigma_{\theta\theta} + R_t} \end{bmatrix}$$
+
+Since cross-covariances $\Sigma_{x\theta}, \Sigma_{y\theta} \approx 0$, we have $K_x \approx 0$ and $K_y \approx 0$.
+
+**Key insight:** No matter what $Q_{xx}$, $Q_{yy}$ values we choose, x and y receive almost no correction because their Kalman gains are approximately zero.
+
+**How do x and y change if no one corrects them?**
+
+From the state update:
+
+$$\mu_t = \bar{\mu}_t + K_t y_t$$
+
+With $K_x \approx 0$, $K_y \approx 0$:
+
+$$x_t \approx \bar{x}_t, \quad y_t \approx \bar{y}_t$$
+
+Position states follow the **prediction exactly** (wheel odometry integration). The EKF does not correct position directly.
+
+However, correcting $\theta$ **indirectly improves** position because future predictions use the corrected heading:
+
+$$\bar{x}_t = x_{t-1} + v \cos\theta_{t-1} \cdot \Delta t, \quad \bar{y}_t = y_{t-1} + v \sin\theta_{t-1} \cdot \Delta t$$
+
+**What happens to θ when we change $Q_t$ and $R_t$?**
+
+From $K_\theta = \frac{\Sigma_{\theta\theta}}{\Sigma_{\theta\theta} + R_t}$ and $\bar{\Sigma}_{\theta\theta} \approx \Sigma_{\theta\theta,t-1} + Q_{\theta\theta}$:
+
+Increasing $Q_{\theta\theta}$ causes $\Sigma_{\theta\theta}$ to grow faster during prediction. A larger $\Sigma_{\theta\theta}$ in the numerator produces a larger $K_\theta$, which applies a stronger correction toward the IMU measurement.
+
+Increasing $R_t$ adds more to the denominator $(\Sigma_{\theta\theta} + R_t)$, which produces a smaller $K_\theta$. A smaller gain means weaker correction and smoother estimates that rely more on prediction.
+
+The ratio $Q_{\theta\theta}/R_t$ determines filter behavior; doubling both produces identical response.
+
+**Conclusion**
+
+With only IMU heading as correction source, only $Q_{\theta\theta}$ and $R_t$ affect the state estimate.
+
+For $Q_{xx}$ and $Q_{yy}$, changing these values affects the covariance prediction:
+
+$$\bar{\Sigma}_{xx} = \Sigma_{xx,t-1} + Q_{xx}, \quad \bar{\Sigma}_{yy} = \Sigma_{yy,t-1} + Q_{yy}$$
+
+However, these covariances do not appear in the Kalman gain $K_t$ because $H_t = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}$ selects only $\Sigma_{\theta\theta}$. The state update $\mu_t = \bar{\mu}_t + K_t y_t$ remains unchanged regardless of $\Sigma_{xx}$ or $\Sigma_{yy}$. Therefore, tuning $Q_{xx}$ or $Q_{yy}$ only inflates the covariance matrix without changing the actual position estimates.
+
+**Future Extension:** If position measurements were added (e.g., GPS), then $H_t$ would observe x and y, making $K_x$ and $K_y$ non-zero. In that case, $Q_{xx}$ and $Q_{yy}$ would become meaningful tuning parameters
+
+### 1.3 Experimental Validation
 
 ---
 
