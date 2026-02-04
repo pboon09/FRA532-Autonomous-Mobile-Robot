@@ -460,24 +460,54 @@ This section validates the EKF implementation using recorded bag files from a Tu
 
 #### Filter Validation
 
-Without external ground truth, we validate filter correctness using **innovation statistics**.  
-- **Zero-mean**: Prediction matches measurement on average (filter is unbiased)
-- **Small standard deviation**: Consistent with expected sensor noise (filter is consistent)
+We validate filter consistency using **innovation statistics** following [Bris & Kolarik (2014)](https://pmc.ncbi.nlm.nih.gov/articles/PMC4239867/):
 
-Validation Reference:
-> "The KF design is considered consistent if the estimation error is unbiased (zero-mean)" - [Normalized Innovation Squared (NIS)](https://kalman-filter.com/normalized-innovation-squared/)
+> "The innovation sequence is zero-mean, white (uncorrelated), with covariance equal to the measurement prediction covariance."
 
->"The basic idea of covariance-matching techniques is that the sample covariance of innovations should be consistent with its theoretical value" - [Adaptive Kalman Filtering, PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC8638515/)
+**Innovation** (measurement residual):
 
-**Innovation Statistics:**
+```math
+\nu_k = z_k - h(\bar{\mu}_k) = \theta_{IMU} - \theta_{predicted}
+```
 
-| Sequence | Mean (°) | Std (°) | Max (°) |
-|----------|----------|---------|---------|
-| seq00 | -0.001 | 0.113 | 0.55 |
-| seq01 | -0.018 | 0.196 | 1.70 |
-| seq02 | -0.003 | 0.119 | 2.36 |
+**Zero-Mean Test:**
 
-The near-zero mean confirms the filter is unbiased. The small standard deviation (~0.1-0.2°) indicates the prediction closely matches IMU measurements. This validates proper filter operation per the Normalized Innovation Squared (NIS) consistency test, which is the recommended approach when ground truth is unavailable.
+For an unbiased filter, the null hypothesis is:
+
+```math
+H_0: \mathbb{E}[\nu] = 0
+```
+
+When accepted, this confirms "there is no significant discrepancy between a system estimate and a measurement model"
+
+**What Innovation Statistics Tell Us**
+
+| Metric | Expected | Interpretation |
+|--------|----------|----------------|
+| Mean ≈ 0 | $\mathbb{E}[\nu] = 0$ | Filter is **unbiased** |
+| Small Std | Bounded variance | Filter is **not diverging** |
+
+**Result**
+
+| Sequence | Mean (°) | Std (°) |
+|----------|----------|---------|
+| seq00 | -0.001 | 0.113 |
+| seq01 | -0.018 | 0.196 |
+| seq02 | -0.003 | 0.119 |
+
+Near-zero mean confirms the filter is unbiased. Small std confirms the filter is stable.
+
+**Sequence 00:**
+
+![seq00 innovation](part1_ekf_odom/figures/seq00/innovation_analysis.png)
+
+**Sequence 01:**
+
+![seq01 innovation](part1_ekf_odom/figures/seq01/innovation_analysis.png)
+
+**Sequence 02:**
+
+![seq02 innovation](part1_ekf_odom/figures/seq02/innovation_analysis.png)
 
 #### Trajectory Comparison
 
