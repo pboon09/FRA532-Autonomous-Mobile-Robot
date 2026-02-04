@@ -1,0 +1,38 @@
+{
+  "sequence": "seq02",
+  "parameters": {
+    "Q": [
+      0.0,
+      0.0,
+      0.01
+    ],
+    "R": 0.1,
+    "P0": [
+      0.0,
+      0.0,
+      0.1
+    ],
+    "wheel_radius": 0.033,
+    "track_width": 0.16
+  },
+  "data": {
+    "num_samples": 11975,
+    "duration_s": 599.1376438140869
+  },
+  "wheel_odometry": {
+    "final_x": 0.3200464899952348,
+    "final_y": -1.2709074847152382,
+    "final_theta_deg": 47.845415820557186,
+    "deviation_from_imu_deg": 5.2424894168138385
+  },
+  "ekf": {
+    "final_x": 2.7796883236907313,
+    "final_y": -0.9631649431217514,
+    "final_theta_deg": 37.5434473098984,
+    "deviation_from_imu_deg": 0.08687785634539044
+  },
+  "innovation": {
+    "mean_deg": -0.003184430657835335,
+    "std_deg": 0.11899363312750923
+  }
+}
