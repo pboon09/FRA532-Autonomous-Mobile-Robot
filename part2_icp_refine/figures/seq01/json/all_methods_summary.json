@@ -1,0 +1,112 @@
+{
+  "sequence": "seq01",
+  "methods": {
+    "Point-to-Point": {
+      "num_keyframes": 226,
+      "final_pose": {
+        "x": 1.7933180150964587,
+        "y": 0.5952912289416148,
+        "theta_deg": 8.859709807803318
+      },
+      "avg_runtime_ms": 3.6557896931966147,
+      "std_runtime_ms": 11.007180361310603,
+      "total_runtime_s": 0.8225526809692383,
+      "avg_fitness": 0.9760280856973726,
+      "std_fitness": 0.03992118807988818,
+      "avg_rmse": 0.07143819418561027,
+      "std_rmse": 0.02601704891017696,
+      "avg_iterations": 30.0,
+      "consistency_score": 0.9381406589032234,
+      "trajectory_length_m": 53.21987069437536
+    },
+    "Point-to-Plane": {
+      "num_keyframes": 226,
+      "final_pose": {
+        "x": 2.940765084200636,
+        "y": -0.7289375402244479,
+        "theta_deg": -0.788574278354518
+      },
+      "avg_runtime_ms": 2.012821833292643,
+      "std_runtime_ms": 7.335884385223488,
+      "total_runtime_s": 0.4528849124908447,
+      "avg_fitness": 0.9756428219731609,
+      "std_fitness": 0.04069434680745309,
+      "avg_rmse": 0.07330001168772793,
+      "std_rmse": 0.02719458083040675,
+      "avg_iterations": 20.0,
+      "consistency_score": 0.9364269767380881,
+      "trajectory_length_m": 55.81978313405562
+    },
+    "Point-to-Line": {
+      "num_keyframes": 226,
+      "final_pose": {
+        "x": 2.002524333490879,
+        "y": 0.027584616287407333,
+        "theta_deg": -0.10616565452153334
+      },
+      "avg_runtime_ms": 1.4315870577330416,
+      "std_runtime_ms": 1.4808850731492769,
+      "total_runtime_s": 0.32210708798993437,
+      "avg_fitness": 0.9876267809828393,
+      "std_fitness": 0.030832070531099483,
+      "avg_rmse": 0.10601716335497025,
+      "std_rmse": 0.04915505213292531,
+      "avg_iterations": 2.0,
+      "consistency_score": 0.925936966297599,
+      "trajectory_length_m": 56.322476935575104
+    },
+    "GICP": {
+      "num_keyframes": 226,
+      "final_pose": {
+        "x": 1.7748412587931808,
+        "y": -2.08475874253154,
+        "theta_deg": 10.256076444504444
+      },
+      "avg_runtime_ms": 1.6696357727050781,
+      "std_runtime_ms": 5.533869049196006,
+      "total_runtime_s": 0.3756680488586426,
+      "avg_fitness": 0.9752578598731166,
+      "std_fitness": 0.04061542905452291,
+      "avg_rmse": 0.07439531270512258,
+      "std_rmse": 0.027054887317879556,
+      "avg_iterations": 30.0,
+      "consistency_score": 0.9366187152207021,
+      "trajectory_length_m": 55.68473446124764
+    }
+  },
+  "rankings": {
+    "Point-to-Point": {
+      "total_score": 0.8246058251264917,
+      "accuracy_score": 0.9882559935505959,
+      "robustness_score": 0.9882559935505959,
+      "speed_score": 0.3915944783140041,
+      "consistency_score": 1.0,
+      "convergence_score": 0.06666666666666667
+    },
+    "Point-to-Plane": {
+      "total_score": 0.8809101988580589,
+      "accuracy_score": 0.9627741468772961,
+      "robustness_score": 0.9878659031524514,
+      "speed_score": 0.7112338678238612,
+      "consistency_score": 0.9981733206541343,
+      "convergence_score": 0.1
+    },
+    "Point-to-Line": {
+      "total_score": 0.8838913851975184,
+      "accuracy_score": 0.6738361216703987,
+      "robustness_score": 1.0,
+      "speed_score": 1.0,
+      "consistency_score": 0.9869916174191921,
+      "convergence_score": 1.0
+    },
+    "GICP": {
+      "total_score": 0.9033227928468568,
+      "accuracy_score": 0.9482252055607792,
+      "robustness_score": 0.9874761181572925,
+      "speed_score": 0.8574247636139471,
+      "consistency_score": 0.998377702034255,
+      "convergence_score": 0.06666666666666667
+    }
+  },
+  "best_method": "GICP"
+}
