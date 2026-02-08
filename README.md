@@ -6,6 +6,7 @@
   - [Project Overview](#project-overview)
   - [System Architecture](#system-architecture)
   - [Setup](#setup)
+    - [Dataset Description](#dataset-description)
     - [Running](#running)
   - [Part 1: EKF Odometry Fusion](#part-1-ekf-odometry-fusion)
     - [1.1 Wheel Odometry](#11-wheel-odometry)
@@ -49,6 +50,10 @@
       - [2.9.4 Runtime Analysis](#294-runtime-analysis)
     - [2.10 ICP vs Wheel Odometry](#210-icp-vs-wheel-odometry)
   - [Part 3: Full SLAM with slam\_toolbox](#part-3-full-slam-with-slam_toolbox)
+    - [3.1 What is slam\_toolbox?](#31-what-is-slam_toolbox)
+    - [3.2 Available Launch Configurations](#32-available-launch-configurations)
+    - [3.3 Mode Comparison: Synchronous vs Asynchronous](#33-mode-comparison-synchronous-vs-asynchronous)
+    - [3.4 Configuration Parameters to Edit](#34-configuration-parameters-to-edit)
   - [Part 4: Results](#part-4-results)
   - [Part 5: Discussion](#part-5-discussion)
   - [Conclusion](#conclusion)
@@ -89,6 +94,20 @@ echo "source ~/FRA532-Autonomous-Mobile-Robot/install/setup.bash" >> ~/.bashrc
 source ~/.bashrc
 ```
 
+### Dataset Description
+The dataset is provided as a ROS bag and contains sensor measurements recorded during robot motion.
+
+**Topics included:**
+- /scan: 2D LiDAR laser scans at 5 Hz
+- /imu: Gyroscope and accelerometer data at 20 Hz
+- /joint_states: Wheel motor position and velocity at 20 Hz
+
+The dataset is divided into three sequences, each representing a different environmental condition:
+
+1. **Sequence 00 – Empty Hallway:** A static indoor hallway environment with minimal obstacles and no dynamic objects. This sequence is intended to evaluate baseline odometry and sensor fusion performance.
+2. **Sequence 01 – Non-Empty Hallway with Sharp Turns:** An indoor hallway environment containing obstacles and clutter, with sections of sharp turning motion. This sequence is designed to challenge odometry and scan matching performance under rapid heading changes.
+3. **Sequence 02 – Non-Empty Hallway with Non-Aggressive Motion:** An indoor hallway environment with obstacles, similar to Sequence 2, but recorded with smoother and non-aggressive robot motion. This sequence is intended to evaluate performance under more stable motion conditions.
+
 ### Running
 
 **Terminal 1: Play ROSBag**
@@ -108,6 +127,10 @@ ros2 bag play FRA532_LAB1_DATASET/fibo_floor3_seq02 --clock
 **Terminal 2: Choose which part you want to see the result**
 ```bash
 ros2 launch turtle_bringup part1.launch.py
+
+ros2 launch turtle_bringup part2.launch.py
+
+ros2 launch turtle_bringup part3.launch.py
 ```
 
 ---
@@ -1304,7 +1327,88 @@ All methods achieve **real-time performance** (< 100Hz LiDAR rate).
 
 ## Part 3: Full SLAM with slam_toolbox
 
-<!-- TODO: Add SLAM implementation details -->
+This section demonstrates full 2D SLAM using the ROS2 slam_toolbox package, which provides production-grade mapping and localization capabilities with pose-graph optimization and loop closure detection.
+
+### 3.1 What is slam_toolbox?
+
+[slam_toolbox](https://github.com/SteveMacenski/slam_toolbox) is the officially supported SLAM library for ROS 2, developed by Steve Macenski. It combines LiDAR scan matching with odometry to build 2D maps using graph-based SLAM with the following key features:
+
+**Core Capabilities:**
+- **Graph-based SLAM:** Uses pose-graph optimization with scan matching based on the Karto SLAM algorithm
+- **Loop Closure Detection:** Automatically detects when the robot revisits previously mapped areas and performs global optimization
+- **Lifelong Mapping:** Supports serialization and deserialization of maps, allowing you to continue mapping sessions across different runs
+- **Multiple Operation Modes:** Synchronous/asynchronous mapping, localization-only mode, and offline processing
+- **Production-Ready Performance:** Benchmarked mapping buildings at 5x+ real-time up to 30,000 sq. ft.
+
+**How It Works:**
+
+1. **Input Processing:** Subscribes to `/scan` (LiDAR) and odometry transforms via `/tf`
+2. **Scan Matching:** Aligns consecutive laser scans to refine odometry estimates
+3. **Pose Graph Construction:** Builds a graph where nodes are robot poses and edges are spatial constraints from scan matching
+4. **Loop Closure:** Detects revisited areas and adds loop closure constraints
+5. **Graph Optimization:** Uses Ceres Solver with Levenberg-Marquardt to minimize pose-graph errors
+6. **Map Generation:** Projects laser scans onto optimized poses to create occupancy grid maps
+
+**References:**
+- [slam_toolbox GitHub Repository](https://github.com/SteveMacenski/slam_toolbox)
+- [ROS 2 Navigation with SLAM Tutorial](https://docs.nav2.org/tutorials/docs/navigation2_with_slam.html)
+- [slam_toolbox Documentation](https://docs.ros.org/en/ros2_packages/humble/api/slam_toolbox/)
+
+### 3.2 Available Launch Configurations
+
+slam_toolbox provides **6 different launch files**, each optimized for specific use cases:
+
+| Launch File | Mode | Use Case | Processing |
+|-------------|------|----------|------------|
+| **online_sync_launch.py** | Synchronous Mapping | Real-time mapping with guaranteed processing of every scan | Blocks until each scan is processed |
+| **online_async_launch.py** | Asynchronous Mapping | Real-time mapping with best-effort processing (recommended for live robots) | Drops scans if processing lags |
+| **lifelong_launch.py** | Lifelong Mapping | Continue mapping from previously saved session, with old data removal | Updates existing pose-graph |
+| **localization_launch.py** | Localization Only | AMCL-alternative using pose-graph optimization (no new mapping) | Uses pre-built map |
+| **offline_launch.py** | Offline Processing | Process pre-recorded bag files to generate maps | Batch processing |
+| **merge_maps_kinematic_launch.py** | Map Merging | Combine multiple serialized maps into one global map | Offline merging |
+
+### 3.3 Mode Comparison: Synchronous vs Asynchronous
+
+The two most common modes for live mapping are **online_sync** and **online_async**. Understanding their differences is critical for choosing the right configuration:
+
+| Feature | Online Synchronous | Online Asynchronous |
+|---------|-------------------|---------------------|
+| **Scan Processing** | Processes **every** scan sequentially | Drops scans if processing can't keep up |
+| **Real-time Guarantee** | No (may lag if computation is slow) | Yes (always maintains real-time) |
+| **Map Quality** | Higher (uses all data) | Good (slight information loss) |
+| **CPU Usage** | Can spike during loop closures | More consistent and bounded |
+| **Best For** | Offline processing, small areas, powerful computers | Live robots, large areas, embedded systems |
+| **When to Use** | When you need maximum accuracy and can tolerate lag | When real-time performance is critical |
+
+
+### 3.4 Configuration Parameters to Edit
+
+slam_toolbox behavior is controlled through YAML configuration files located in:
+```
+src/slam_toolbox/config/
+```
+
+**Key Configuration Files:**
+- `mapper_params_online_async.yaml` - For asynchronous mapping
+- `mapper_params_online_sync.yaml` - For synchronous mapping
+- `mapper_params_lifelong.yaml` - For lifelong mapping
+- `mapper_params_localization.yaml` - For localization-only mode
+
+**Critical Parameters to Adjust:**
+
+| Parameter | Default | Description | When to Change |
+|-----------|---------|-------------|----------------|
+| **scan_topic** | `/scan` | LiDAR topic to subscribe to | If your LiDAR publishes to a different topic |
+| **odom_frame** | `odom` | Odometry frame name | Must match your EKF output frame |
+| **base_frame** | `base_footprint` | Robot base frame | Must match your robot's URDF |
+| **map_frame** | `map` | Global map frame | Usually keep as `map` |
+| **resolution** | `0.05` | Map resolution (m/pixel) | Higher (0.1) for faster processing, lower (0.025) for detail |
+| **min_laser_range** | `0.12` | Minimum valid range (m) | Match your LiDAR specs |
+| **max_laser_range** | `3.5` | Maximum valid range (m) | Reduce for indoor, increase for outdoor |
+| **minimum_travel_distance** | `0.5` | Distance (m) before adding new scan | Lower (0.2) for detailed maps, higher (1.0) for speed |
+| **minimum_travel_heading** | `0.5` | Rotation (rad) before adding new scan | Lower (0.2) for curves, higher (1.0) for straight paths |
+| **do_loop_closing** | `true` | Enable loop closure detection | Set `false` if causing issues |
+| **loop_search_maximum_distance** | `3.0` | Max distance (m) to search for loops | Increase for large loops |
 
 ---
 
