@@ -601,12 +601,12 @@ The Iterative Closest Point algorithm solves the registration problem through an
 
 1. **Initialize:** Set $\bar{x}_n = x_n$ and error $e = \infty$
 2. **While** ($e$ has decreased **and** $e >$ threshold):
-   - **Correspondence Step:** $C = \text{determine\_correspondences}(\{y_n, \bar{x}_n\})$
+   - **Correspondence Step:** $C = \text{match}(y_n, \bar{x}_n)$
      - Find nearest neighbors between source and target point clouds using KD-tree ($O(\log n)$ per query)
-   - **Outlier Rejection:** $C' = \text{reject\_outliers}(C)$
+   - **Outlier Rejection:** $C' = \text{filter}(C)$
      - Distance threshold: Remove correspondences with $\|p_i - q_i\| > d_{max}$
      - Normal angle threshold: For Point-to-Plane and Point-to-Line, reject if $\cos^{-1}(n_1 \cdot n_2) > \theta_{max}$
-   - **Transformation Step:** $(t, R) = \text{compute\_transformation\_params}(C')$
+   - **Transformation Step:** $(t, R) = \text{optimize}(C')$
      - Solve for optimal transformation that minimizes the error metric using inlier correspondences only
    - **Update:** $\bar{x}_n = R(x_n - x_0) + y_0$
      - Apply transformation to source points
