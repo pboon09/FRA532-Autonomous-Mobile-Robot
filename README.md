@@ -27,23 +27,27 @@
       - [Time Series Analysis](#time-series-analysis)
   - [Part 2: ICP Odometry Refinement](#part-2-icp-odometry-refinement)
     - [2.1 ICP Problem Formulation](#21-icp-problem-formulation)
-    - [2.2 ICP Variants](#22-icp-variants)
-      - [2.2.1 Point-to-Point ICP](#221-point-to-point-icp)
-      - [2.2.2 Point-to-Plane ICP](#222-point-to-plane-icp)
-      - [2.2.3 Point-to-Line ICP (PLICP)](#223-point-to-line-icp-plicp)
-      - [2.2.4 Generalized ICP (GICP)](#224-generalized-icp-gicp)
-    - [2.3 ICP Pipeline](#23-icp-pipeline)
-    - [2.4 Loop Closure Detection](#24-loop-closure-detection)
-      - [2.4.1 Loop Detection Strategy](#241-loop-detection-strategy)
-      - [2.4.2 Pose Graph Optimization](#242-pose-graph-optimization)
-    - [2.5 Method Ranking](#25-method-ranking)
-    - [2.6 Experimental Results](#26-experimental-results)
-      - [2.6.1 Method Comparison](#261-method-comparison)
-      - [2.6.2 Sequence-Specific Results](#262-sequence-specific-results)
-      - [2.6.3 Loop Closure Analysis](#263-loop-closure-analysis)
-      - [2.6.4 Runtime Analysis](#264-runtime-analysis)
-    - [2.7 ICP vs Wheel Odometry](#27-icp-vs-wheel-odometry)
-    - [2.8 Conclusion](#28-conclusion)
+    - [2.2 ICP Algorithm](#22-icp-algorithm)
+    - [2.3 Nearest Neighbor Search for Correspondence](#23-nearest-neighbor-search-for-correspondence)
+      - [Naive Approach: Linear Search](#naive-approach-linear-search)
+      - [KD-Tree Optimization](#kd-tree-optimization)
+    - [2.4 Voxel Downsampling](#24-voxel-downsampling)
+    - [2.5 Loop Closure Detection](#25-loop-closure-detection)
+      - [2.5.1 Loop Detection Strategy](#251-loop-detection-strategy)
+      - [2.5.2 Pose Graph Optimization](#252-pose-graph-optimization)
+    - [2.6 ICP Variants](#26-icp-variants)
+      - [2.6.1 Point-to-Point ICP](#261-point-to-point-icp)
+      - [2.6.2 Point-to-Plane ICP](#262-point-to-plane-icp)
+      - [2.6.3 Point-to-Line ICP (PLICP)](#263-point-to-line-icp-plicp)
+      - [2.6.4 Generalized ICP (GICP)](#264-generalized-icp-gicp)
+    - [2.7 ICP Pipeline](#27-icp-pipeline)
+    - [2.8 Method Ranking](#28-method-ranking)
+    - [2.9 Experimental Results](#29-experimental-results)
+      - [2.9.1 Method Comparison](#291-method-comparison)
+      - [2.9.2 Sequence-Specific Results](#292-sequence-specific-results)
+      - [2.9.3 Loop Closure Analysis](#293-loop-closure-analysis)
+      - [2.9.4 Runtime Analysis](#294-runtime-analysis)
+    - [2.10 ICP vs Wheel Odometry](#210-icp-vs-wheel-odometry)
   - [Part 3: Full SLAM with slam\_toolbox](#part-3-full-slam-with-slam_toolbox)
   - [Part 4: Results](#part-4-results)
   - [Part 5: Discussion](#part-5-discussion)
@@ -563,190 +567,202 @@ This section presents scan-matching based odometry refinement using multiple var
 
 **References:**
 - Besl & McKay (1992) - [A Method for Registration of 3-D Shapes](https://graphics.stanford.edu/courses/cs164-09-spring/Handouts/paper_icp.pdf)
-- Segal et al. (2009) - [Generalized-ICP](https://proceedings.neurips.cc/paper_files/paper/2009/file/0438f6bb8492e6c0e8b86e23d6084c92-Paper.pdf)
+- Segal et al. (2009) - [Generalized-ICP](https://www.robots.ox.ac.uk/~avsegal/resources/papers/Generalized_ICP.pdf)
 - Censi (2008) - [An ICP variant using a point-to-line metric](https://censi.science/pub/research/2008-icra-plicp.pdf)
 
 ### 2.1 ICP Problem Formulation
 
-**Goal:** Find the transformation $T$ that best aligns source point cloud $P$ to target point cloud $Q$:
+**Given** set of two sets of point cloud:
+
+- $X = \{x_1, x_2, \ldots, x_n\}$
+- $Y = \{y_1, y_2, \ldots, y_n\}$
+
+**Objective:** Find the rotation $R$ and translation $t$ that minimize the sum of squared error between corresponding points:
 
 ```math
-T^* = \arg\min_T \sum_{i=1}^{N} w_i \cdot \text{dist}(T \cdot p_i, q_i)^2
+E(R, t) = \frac{1}{N_p} \sum_{i=1}^{N_p} \| x_i - Ry_i - t \|^2
 ```
 
-where:
-- $p_i \in P$: Source point (current scan)
-- $q_i \in Q$: Corresponding target point (previous scan)
-- $w_i$: Weight for correspondence $i$
-- $\text{dist}()$: Distance metric (varies by ICP variant)
+where $x_i$ and $y_i$ are the corresponding points.
 
 **For 2D LiDAR SLAM:**
 
 The transformation is parameterized as:
 
 ```math
-T = \begin{bmatrix} \cos\theta & -\sin\theta & t_x \\ \sin\theta & \cos\theta & t_y \\ 0 & 0 & 1 \end{bmatrix}
+R = \begin{bmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{bmatrix}, \quad t = \begin{bmatrix} t_x \\ t_y \end{bmatrix}
 ```
 
 Optimization solves for $[t_x, t_y, \theta]$ to minimize the alignment error.
 
-### 2.2 ICP Variants
+### 2.2 ICP Algorithm
 
-We implement and compare 4 ICP variants optimized for 2D LiDAR scan matching:
+The Iterative Closest Point algorithm solves the registration problem through an iterative two-step process. The basic algorithm follows this structure:
 
-#### 2.2.1 Point-to-Point ICP
+1. **Initialize:** Set $\bar{x}_n = x_n$ and error $e = \infty$
+2. **While** ($e$ has decreased **and** $e >$ threshold):
+   - **Correspondence Step:** $C = \text{determine\_correspondences}(\{y_n, \bar{x}_n\})$
+     - Find nearest neighbors between source and target point clouds using KD-tree ($O(\log n)$ per query)
+   - **Outlier Rejection:** $C' = \text{reject\_outliers}(C)$
+     - Distance threshold: Remove correspondences with $\|p_i - q_i\| > d_{max}$
+     - Normal angle threshold: For Point-to-Plane and Point-to-Line, reject if $\cos^{-1}(n_1 \cdot n_2) > \theta_{max}$
+   - **Transformation Step:** $(t, R) = \text{compute\_transformation\_params}(C')$
+     - Solve for optimal transformation that minimizes the error metric using inlier correspondences only
+   - **Update:** $\bar{x}_n = R(x_n - x_0) + y_0$
+     - Apply transformation to source points
+   - **Compute Error:** $e = E(t, R)$
+     - Evaluate alignment quality
+3. **Return** $\{\bar{x}_n\}$
 
-**Distance Metric:**
+**Key Insight:** If correspondences were known a priori, a closed-form solution exists using Singular Value Decomposition (SVD). However, for LiDAR scan matching, correspondences are unknown. The algorithm iteratively alternates between estimating correspondences (nearest neighbor search) and estimating the transformation (least squares optimization) until convergence.
 
-```math
-E_{P2P} = \sum_{i=1}^{N} \| T \cdot p_i - q_i \|^2
-```
+**Where do ICP variants differ?** The variants differ **only in the transformation step** - specifically in how the error metric $E(t, R)$ is defined and minimized.
 
-**Characteristics:**
-- Simplest variant, minimizes Euclidean distance
-- Fast convergence (~50 iterations max)
-- Sensitive to outliers
-- Works well for dense, overlapping scans
+### 2.3 Nearest Neighbor Search for Correspondence
 
-**Implementation:** Uses Open3D's `registration_icp()` with default point-to-point estimator.
+The correspondence step finds matches between source and target point clouds. For each point $p_i$ in the source cloud, we must find its nearest neighbor $q_i$ in the target cloud.
 
-#### 2.2.2 Point-to-Plane ICP
-
-**Distance Metric:**
-
-```math
-E_{P2Pl} = \sum_{i=1}^{N} \left[ (T \cdot p_i - q_i) \cdot n_i \right]^2
-```
-
-where $n_i$ is the normal vector at $q_i$.
-
-**Characteristics:**
-- Minimizes distance along surface normal
-- Faster convergence than Point-to-Point
-- More robust to partial overlaps
-- Requires normal estimation
-
-**Normal Estimation:** Computed using PCA on local neighborhoods (5 nearest neighbors).
-
-**Implementation:** Uses Open3D's `registration_icp()` with `TransformationEstimationPointToPlane`.
-
-#### 2.2.3 Point-to-Line ICP (PLICP)
-
-**Distance Metric:**
-
-```math
-E_{P2L} = \sum_{i=1}^{N} \| (T \cdot p_i - q_i) - [(T \cdot p_i - q_i) \cdot n_i] \cdot n_i \|^2
-```
-
-**Characteristics:**
-- Optimized for 2D LiDAR SLAM
-- Most popular for 2D laser scan matching (used in ROS `laser_scan_matcher`)
-- Exploits planar structure of 2D range data
-- Best accuracy-speed tradeoff for 2D LiDAR
-
-**Why Point-to-Line for 2D LiDAR?**
-
-2D LiDAR scans capture **line segments** (walls, furniture edges). Point-to-Line ICP exploits this by:
-1. Computing normals perpendicular to line segments
-2. Projecting error onto the line tangent direction
-3. Allowing free motion along lines while constraining perpendicular motion
-
-This is more appropriate than Point-to-Plane (designed for 3D surfaces).
-
-**Implementation:** Custom Python implementation using normal-based projection.
-
-#### 2.2.4 Generalized ICP (GICP)
-
-**Distance Metric:**
-
-```math
-E_{GICP} = \sum_{i=1}^{N} (T \cdot p_i - q_i)^T (C_i^P + C_i^Q)^{-1} (T \cdot p_i - q_i)
-```
-
-where $C_i^P$ and $C_i^Q$ are covariance matrices encoding local surface geometry.
-
-**Characteristics:**
-- Probabilistic formulation treating points as distributions
-- Combines benefits of Point-to-Point and Point-to-Plane
-- More robust to noise and partial overlaps
-- Slower than other variants due to covariance computation
-
-**Implementation:** Uses Open3D's `registration_generalized_icp()`.
-
-### 2.3 ICP Pipeline
+#### Naive Approach: Linear Search
 
 **Algorithm:**
-
 ```
-1. Preprocess scans:
-   - Remove invalid points (range < 0.1m or > 10m)
-   - Convert to Open3D PointCloud
-   - Downsample with voxel filter (0.05m)
-   - Estimate normals (for Point-to-Plane, Point-to-Line, GICP)
+For each point p_i in source cloud P:
+    min_distance = ∞
+    nearest_point = null
 
-2. Initialize transformation:
-   T_init = EKF odometry increment
+    For each point q_j in target cloud Q:
+        distance = ||p_i - q_j||
+        if distance < min_distance:
+            min_distance = distance
+            nearest_point = q_j
 
-3. ICP Registration:
-   for iteration = 1 to max_iterations:
-       a. Find correspondences (nearest neighbor search)
-       b. Reject outliers (distance > threshold)
-       c. Compute transformation minimizing error metric
-       d. Apply transformation T ← T × ΔT
-       e. if |ΔT| < tolerance: break
-
-4. Output:
-   - Transformation T
-   - Fitness score (inlier ratio)
-   - RMSE (alignment error)
+    correspondences[i] = (p_i, nearest_point)
 ```
 
-**Keyframe Selection:**
+**Complexity:** $O(n^2)$ - For $n$ source points and $n$ target points, requires $n \times n$ distance computations.
 
-Not every scan is processed. Keyframes are selected when:
+**Problem:** Too slow for Online SLAM
 
-```math
-\Delta x^2 + \Delta y^2 > d_{threshold}^2 \quad \text{or} \quad |\Delta\theta| > \theta_{threshold}
+#### KD-Tree Optimization
+
+**Data Structure:**
+
+A KD-tree is a binary space-partitioning tree that recursively splits the point cloud along alternating axes:
+
+![KD-tree visualization showing binary space partitioning across multiple levels](media/kd-tree.png)
+
+*Source: [ResearchGate - Example of a 2D k-d tree](https://www.researchgate.net/figure/Example-of-a-2D-k-d-tree-Figure-reproduced-from-Wikipedia_fig29_284142470)*
+
+**Algorithm:**
+```
+Construction O(n log n):
+1. Choose splitting axis (x, then y, then x, ...)
+2. Find median point along that axis
+3. Partition points into left/right subtrees
+4. Recursively build subtrees
+
+Nearest Neighbor Query O(log n):
+1. Start at root, traverse down tree based on query point coordinates
+2. Find leaf node (initial candidate)
+3. Backtrack and check other branches if necessary
+4. Return closest point found
 ```
 
-Parameters: $d_{threshold} = 0.3m$, $\theta_{threshold} = 0.3$ rad
+**Complexity:** $O(n \log n)$ for construction, $O(\log n)$ per query (average case)
 
-This reduces computation while maintaining trajectory accuracy.
+**Advantage:** KD-tree reduces correspondence search from $O(n^2)$ to $O(n \log n)$, enabling real-time performance for Online SLAM. By partitioning space hierarchically, the tree eliminates large regions that cannot contain closer points, avoiding unnecessary distance computations.
 
-### 2.4 Loop Closure Detection
+**Implementation:** Open3D uses optimized KD-tree implementation with caching for repeated queries during ICP iterations.
+
+### 2.4 Voxel Downsampling
+
+Before running ICP, raw LiDAR scans must be preprocessed to reduce computational cost while preserving geometric structure. Voxel downsampling achieves this by partitioning space into a regular grid and replacing all points within each voxel with their centroid.
+
+> **Note:** While "voxel" technically refers to 3D volumetric cells, the term is conventionally used in both 2D and 3D SLAM systems for grid-based downsampling.
+
+**Why Downsampling?**
+
+Raw LiDAR scans contain thousands of points. Processing every point for correspondence search and transformation estimation is computationally expensive. Downsampling reduces point count by 50-70% while maintaining surface geometry, enabling real-time performance.
+
+**Voxel Grid Method:**
+
+```
+Input: Point cloud P, Voxel size v
+Output: Downsampled point cloud P_down
+
+1. Create grid with cell size v:
+   For each point p_i in P:
+       voxel_index = floor(p_i / v)  # Map point to grid cell
+
+2. Group points by voxel:
+   voxel_map[voxel_index].append(p_i)
+
+3. Compute centroid for each non-empty voxel:
+   For each voxel in voxel_map:
+       centroid = mean(voxel_map[voxel])
+       P_down.append(centroid)
+
+return P_down
+```
+
+**Visualization:**
+
+![Voxel downsampling visualization showing grid partitioning and centroid computation](media/sampling.png)
+
+*Source: [Smart 3D Change Detection - Medium](https://medium.com/data-science-collective/smart-3d-change-detection-python-tutorial-for-point-clouds-0dfd9945eb6a)*
+
+**Key Properties:**
+
+- **Uniform density**: Ensures evenly distributed points regardless of scanning pattern
+- **Preserves structure**: Averaging preserves surface geometry and normals
+- **Deterministic**: Same input always produces same output
+- **Fast**: $O(n)$ complexity with hash-based voxel indexing
+
+**Implementation:** Open3D's `voxel_down_sample()` uses optimized spatial hashing for $O(n)$ performance. For this project, `voxel_size=0.05m` provides good balance between speed and accuracy.
+
+### 2.5 Loop Closure Detection
 
 Loop closure detects when the robot revisits a previously mapped area, enabling global consistency correction through pose graph optimization.
 
 **References:**
 - Grisetti et al. (2010) - [A Tutorial on Graph-Based SLAM](http://www2.informatik.uni-freiburg.de/~stachnis/pdf/grisetti10titsmag.pdf)
 
-#### 2.4.1 Loop Detection Strategy
+#### 2.5.1 Loop Detection Strategy
 
-**Three-Stage Pipeline:**
+**Four-Stage Pipeline:**
 
-1. **Spatial Proximity Check:**
+1. **Keyframe Index Gap:**
    ```math
-   \text{dist}(p_{current}, p_{past}) < r_{search} = 2.5m
+   \text{index}_{past} < \text{index}_{current} - 10
    ```
+   Only considers keyframes at least 10 frames before the current one, preventing matches with immediately preceding scans.
 
 2. **Temporal Threshold:**
    ```math
    t_{current} - t_{past} > t_{min} = 30s
    ```
-   Prevents matching recent poses (avoids trivial loops).
+   Prevents matching recent poses (avoids trivial loops from perceptual aliasing).
 
-3. **Geometric Verification:**
-   - Run ICP between current and candidate past scans
-   - Accept if fitness > 0.65 AND RMSE < 0.12m
+3. **Spatial Proximity Check:**
+   ```math
+   \text{dist}(p_{current}, p_{past}) < r_{search} = 2.5m
+   ```
+   Identifies candidates where the robot may have revisited the same location.
+
+4. **Geometric Verification:**
+   - Run ICP between current and candidate past scans with identity initialization
+   - Accept loop if **both** conditions are met:
+     - `fitness > 0.65` (sufficient scan overlap)
+     - `RMSE < 0.12m` (geometric consistency)
 
 **Why This Works:**
 
-Following standard SLAM conventions (slam_toolbox, Cartographer), this pipeline:
-- Coarse spatial filtering reduces ICP candidates (computation)
-- Temporal gating prevents perceptual aliasing
-- Geometric verification ensures true revisits
+Following standard SLAM conventions (Cartographer, ORB-SLAM), this pipeline:
+- **Index gap + temporal threshold**: Prevents trivial loops between consecutive or recent scans
+- **Spatial filtering**: Reduces ICP candidates to only nearby past locations
+- **Geometric verification**: Ensures true revisits with stringent fitness and accuracy thresholds
 
-#### 2.4.2 Pose Graph Optimization
+#### 2.5.2 Pose Graph Optimization
 
 **Graph Construction:**
 
@@ -769,27 +785,43 @@ where:
 
 **Error Function:**
 
-For each edge $(i, j)$ with relative measurement $z_{ij} = [\Delta x, \Delta y, \Delta\theta]$:
+For each edge $(i, j)$ with measurement $z_{ij}$ from ICP or odometry:
 
 ```math
-e_{ij} = \begin{bmatrix}
-\cos\theta_i(\Delta x - (x_j - x_i)) + \sin\theta_i(\Delta y - (y_j - y_i)) \\
--\sin\theta_i(\Delta x - (x_j - x_i)) + \cos\theta_i(\Delta y - (y_j - y_i)) \\
-\text{normalize}(\Delta\theta - (\theta_j - \theta_i))
+e_{ij} = T_{predicted}(i, j) - z_{ij}
+```
+
+where:
+- $T_{predicted}(i, j)$ = Relative pose computed from current state estimates
+- $z_{ij}$ = Measured relative pose from ICP (for loop closures) or odometry (for sequential edges)
+- Both represented as $[x, y, \theta]$ in the local frame of pose $i$
+
+**Implementation:**
+```python
+predicted_pose = compute_relative_pose(poses[j], poses[i])  # From current estimates
+measured_pose = edge['relative_pose']                        # From ICP/odometry
+error = [
+    predicted_pose[0] - measured_pose[0],
+    predicted_pose[1] - measured_pose[1],
+    normalize_angle(predicted_pose[2] - measured_pose[2])
+]
+```
+
+**Information Matrix (Per-Edge):**
+
+Each edge has its own information matrix based on the ICP registration quality:
+
+```math
+\Omega_{ij} = \begin{bmatrix}
+\frac{1}{\text{RMSE}_{ij}^2 + \epsilon} & 0 & 0 \\
+0 & \frac{1}{\text{RMSE}_{ij}^2 + \epsilon} & 0 \\
+0 & 0 & \frac{1}{\text{RMSE}_{ij}^2 + \epsilon}
 \end{bmatrix}
 ```
 
-**Information Matrix:**
+where $\text{RMSE}_{ij}$ is the inlier RMSE from that specific ICP registration, and $\epsilon = 10^{-6}$ prevents division by zero.
 
-```math
-\Omega = \begin{bmatrix}
-\frac{1}{\sigma_{RMSE}^2} & 0 & 0 \\
-0 & \frac{1}{\sigma_{RMSE}^2} & 0 \\
-0 & 0 & \frac{1}{\sigma_{RMSE}^2}
-\end{bmatrix}
-```
-
-Higher ICP RMSE → Lower weight (less trust in that loop closure).
+**Key insight:** Higher ICP RMSE → Lower information (less trust), automatically down-weighting poor loop closures.
 
 **Optimization:**
 
@@ -808,7 +840,317 @@ Loop closure residuals are weighted 10× higher than odometry:
 
 This prioritizes global consistency over local odometry smoothness, following slam_toolbox conventions.
 
-### 2.5 Method Ranking
+### 2.6 ICP Variants
+
+#### 2.6.1 Point-to-Point ICP
+
+Point-to-Point ICP minimizes the Euclidean distance between corresponding points in the source and target clouds. Each point in the source cloud is matched to its nearest neighbor in the target cloud, and the transformation is optimized to reduce the sum of squared distances between all matched pairs.
+
+**Distance Metric:**
+
+```math
+E_{P2P} = \sum_{i=1}^{N} \| T \cdot p_i - q_i \|^2
+```
+
+**Characteristics:**
+- Simplest variant, minimizes Euclidean distance
+- Fast convergence (~50 iterations max)
+- Sensitive to outliers
+- Works well for dense, overlapping scans
+
+**Implementation:** Uses Open3D's `registration_icp()` with default point-to-point estimator.
+
+**Transformation Step (SVD-based Procrustes):**
+
+```
+Input: Matched point pairs (P', Q) after correspondence
+Output: Optimal rotation R and translation t
+
+1. Compute centroids:
+   centroid_P = mean(P')
+   centroid_Q = mean(Q)
+
+2. Center point clouds:
+   P_centered = P' - centroid_P
+   Q_centered = Q - centroid_Q
+
+3. Compute cross-covariance matrix:
+   H = P_centered^T · Q_centered
+
+4. Solve for rotation using SVD:
+   U, Σ, V^T = SVD(H)
+   R = V · U^T
+
+5. Solve for translation:
+   t = centroid_Q - R · centroid_P
+
+return (R, t)
+```
+
+#### 2.6.2 Point-to-Plane ICP
+
+Point-to-Plane ICP minimizes the distance along the surface normal direction rather than the direct Euclidean distance. This approach measures how far each source point deviates from the tangent plane of its corresponding target point, allowing sliding motion along surfaces while constraining perpendicular motion. This leads to faster convergence, especially when scans have different sampling densities.
+
+**Distance Metric:**
+
+```math
+E_{P2Pl} = \sum_{i=1}^{N} \left[ (T \cdot p_i - q_i) \cdot n_i \right]^2
+```
+
+where $n_i$ is the normal vector at $q_i$.
+
+**Characteristics:**
+- Minimizes distance along surface normal
+- Faster convergence than Point-to-Point
+- More robust to partial overlaps
+- Requires normal estimation
+
+**Implementation:** Uses Open3D's `registration_icp()` with `TransformationEstimationPointToPlane`. Normal vectors are computed using PCA on local neighborhoods (5 nearest neighbors).
+
+**Transformation Step (Normal-constrained Least Squares):**
+
+```
+Input: Matched pairs (P', Q) with normals N
+Output: Optimal rotation R and translation t
+
+1. Build linear system for each correspondence (p'_i, q_i, n_i):
+   error_i = (p'_i - q_i) · n_i
+
+   For 2D case:
+   A[i] = [n_i^T, p'_i × n_i]   # Jacobian w.r.t. [t_x, t_y, θ]
+   b[i] = -error_i
+
+2. Solve overdetermined system using least squares:
+   [Δt_x, Δt_y, Δθ]^T = (A^T A)^(-1) A^T b
+
+3. Construct incremental transformation:
+   R = [cos(Δθ)  -sin(Δθ)]
+       [sin(Δθ)   cos(Δθ)]
+   t = [Δt_x, Δt_y]^T
+
+return (R, t)
+```
+
+#### 2.6.3 Point-to-Line ICP (PLICP)
+
+Point-to-Line ICP is specifically optimized for 2D LiDAR SLAM. Unlike 3D point clouds that represent surfaces, 2D LiDAR scans capture line segments (walls, furniture edges). This variant minimizes the perpendicular distance from source points to the lines formed by target points, allowing free motion along line tangent directions while constraining perpendicular motion. This geometric insight makes it particularly effective for indoor 2D environments.
+
+**Distance Metric:**
+
+```math
+E_{P2L} = \sum_{i=1}^{N} \| (T \cdot p_i - q_i) - [(T \cdot p_i - q_i) \cdot n_i] \cdot n_i \|^2
+```
+
+**Characteristics:**
+- Optimized for 2D LiDAR SLAM
+- Most popular for 2D laser scan matching (used in ROS `laser_scan_matcher`)
+- Exploits planar structure of 2D range data
+- Best accuracy-speed tradeoff for 2D LiDAR
+
+**Implementation:** Custom Python implementation using normal-based projection.
+
+**Transformation Step (2D Line-based Least Squares):**
+
+```
+Input: Matched pairs (P', Q) with normals N (2D points)
+Output: Optimal rotation R and translation t
+
+1. Build linear system for 2D transformation [Δt_x, Δt_y, Δθ]:
+   For each correspondence (p'_i, q_i, n_i):
+       n_x, n_y = n_i[0], n_i[1]
+       p_x, p_y = p'_i[0], p'_i[1]
+
+       # Point-to-line error projected onto normal
+       error_i = (p'_i - q_i) · n_i
+
+       # Jacobian row for 2D rigid transformation
+       A[i] = [n_x, n_y, -p_x * n_y + p_y * n_x]
+       b[i] = -error_i
+
+2. Solve for incremental transformation:
+   [Δt_x, Δt_y, Δθ]^T = (A^T A)^(-1) A^T b
+
+3. Construct transformation:
+   R = [cos(Δθ)  -sin(Δθ)]
+       [sin(Δθ)   cos(Δθ)]
+   t = [Δt_x, Δt_y]^T
+
+return (R, t)
+```
+
+#### 2.6.4 Generalized ICP (GICP)
+
+Generalized ICP takes a probabilistic approach by treating each point not as a single location, but as a distribution characterized by a covariance matrix. This covariance captures the local surface geometry around each point. Instead of minimizing simple Euclidean distances, GICP minimizes the Mahalanobis distance weighted by the combined uncertainties of both point clouds. This formulation makes it more robust to noise and varying point densities.
+
+**Distance Metric:**
+
+```math
+E_{GICP} = \sum_{i=1}^{N} (T \cdot p_i - q_i)^T (C_i^P + C_i^Q)^{-1} (T \cdot p_i - q_i)
+```
+
+where $C_i^P$ and $C_i^Q$ are covariance matrices encoding local surface geometry.
+
+**Characteristics:**
+- Probabilistic formulation treating points as distributions
+- Combines benefits of Point-to-Point and Point-to-Plane
+- More robust to noise and partial overlaps
+- Slower than other variants due to covariance computation
+
+**Implementation:** Uses Open3D's `registration_generalized_icp()`.
+
+**Transformation Step (Probabilistic Weighted Least Squares):**
+
+```
+Input: Matched pairs (P', Q) with local covariances (C_P, C_Q)
+Output: Optimal rotation R and translation t
+
+1. Estimate local covariance for each point:
+   For each point p'_i and q_i:
+       C_i^P = covariance of k-nearest neighbors of p'_i
+       C_i^Q = covariance of k-nearest neighbors of q_i
+
+2. Build weighted linear system using Mahalanobis distance:
+   For each correspondence (p'_i, q_i):
+       # Combined covariance matrix
+       C_i = C_i^P + C_i^Q
+       W_i = C_i^(-1)  # Information matrix (weight)
+
+       # Weighted residual
+       r_i = p'_i - q_i
+
+       # Add to weighted least squares system
+       A += J_i^T W_i J_i     # J_i = Jacobian of transformation
+       b += J_i^T W_i r_i
+
+3. Solve weighted system:
+   [Δt_x, Δt_y, Δθ]^T = A^(-1) b
+
+4. Construct transformation:
+   R = [cos(Δθ)  -sin(Δθ)]
+       [sin(Δθ)   cos(Δθ)]
+   t = [Δt_x, Δt_y]^T
+
+return (R, t)
+```
+
+### 2.7 ICP Pipeline
+
+The ICP pipeline integrates multiple processing stages to refine odometry estimates using LiDAR scan matching.
+
+**Pipeline Workflow:**
+
+```
+Input: LiDAR scan_t, Wheel odometry odom_t, Previous keyframe scan_prev
+Output: Refined transformation T_refined, Updated trajectory
+
+1. Scan Preprocessing:
+   scan_filtered = remove_invalid_points(scan_t, min_range=0.1, max_range=10.0)
+   scan_downsampled = voxel_downsample(scan_filtered, voxel_size=0.05)
+
+   if variant requires normals (Point-to-Plane, Point-to-Line, GICP):
+       estimate_normals(scan_downsampled, k_neighbors=5)
+
+2. Keyframe Selection:
+   Δx, Δy, Δθ = compute_motion(odom_t, odom_prev)
+
+   if (Δx² + Δy² > 0.3²) OR (|Δθ| > 0.3):
+       is_keyframe = True
+   else:
+       skip to next scan  # Process only ~20-30% of scans
+
+3. ICP Registration (if keyframe):
+   T_init = get_odometry_transform(odom_t, odom_prev)  # EKF estimate as initial guess
+
+   # Run ICP algorithm (Section 2.2) with selected variant (Section 2.4)
+   result = ICP_variant.register(
+       source=scan_downsampled,
+       target=scan_prev,
+       init_transform=T_init,
+       max_iterations=50
+   )
+
+   T_refined = result.transformation
+   fitness = result.fitness
+   rmse = result.inlier_rmse
+
+4. Update Trajectory:
+   pose_global = pose_global * T_refined  # Integrate transformation
+   trajectory.append(pose_global)
+
+   # Store for loop closure detection
+   keyframes.append({
+       'pose': pose_global,
+       'scan': scan_downsampled,
+       'fitness': fitness,
+       'rmse': rmse
+   })
+
+5. Output:
+   return T_refined, fitness, rmse
+```
+
+**System Integration:**
+
+The pipeline integrates with the sensor processing chain to progressively refine odometry. Part 1 (EKF) fuses wheel odometry with IMU to correct heading θ, but position (x, y) remains uncorrected and drifts. Part 2 (ICP) addresses this by using geometric constraints from LiDAR scan alignment to refine both position and heading. The refined trajectory then feeds into loop closure detection for global consistency.
+
+| Module | Corrects | Limitation |
+|--------|----------|------------|
+| **Wheel Odometry** | Nothing (drifts in all dimensions) | Unbounded drift |
+| **EKF (Part 1)** | Heading θ (via IMU) | Position (x, y) uncorrected → still drifts |
+| **ICP (Part 2)** | Position (x, y) + Heading θ | Local registration only, drift accumulates |
+| **Loop Closure** | Global drift | Requires revisiting same area |
+
+**Scan Preprocessing:**
+
+Raw LiDAR scans are prepared through three steps:
+
+1. **Range filtering:** Remove invalid points to eliminate sensor noise and outliers
+2. **Voxel downsampling:** Reduce point density to speed up processing while keeping geometric structure
+3. **Normal estimation:** For Point-to-Plane, Point-to-Line, and GICP, compute surface normals using PCA on 5-nearest neighbors
+
+**Keyframe Selection:**
+
+Not every scan is processed to save computation. A scan becomes a keyframe when:
+- Robot moves enough: $\Delta x^2 + \Delta y^2 > (0.3m)^2$, **OR**
+- Robot rotates enough: $|\Delta\theta| > 0.3$ rad
+
+This filters scans to only 20-30% while still capturing the trajectory accurately.
+
+**ICP Registration:**
+
+For each keyframe, the algorithm aligns it to the previous keyframe:
+
+1. **Initialization:** Use EKF odometry as starting guess ($T_{init}$)
+2. **Iteration:** Repeat until converged:
+   - Find nearest point pairs between scans (correspondence)
+   - Remove bad matches beyond distance threshold (outlier rejection)
+   - Compute best transformation using error metric from Section 2.6
+   - Update transformation estimate
+3. **Convergence:** Stop when change is small ($|\Delta T|$ < tolerance) or hit max 50 iterations
+
+**Output:**
+
+1. **Refined Transformation $T_{refined}$:**
+   - Replaces drift-prone wheel odometry with geometrically constrained pose update
+   - Integrated into global trajectory: $\text{pose}_{global} = \text{pose}_{global} \times T_{refined}$
+
+2. **Fitness Score:**
+   - Formula: $\text{fitness} = \frac{\text{num\_inliers}}{\text{num\_source\_points}}$
+   - Used by loop closure detector to filter low-quality matches
+
+3. **Inlier RMSE:**
+   - Root mean squared error for inlier correspondences only
+   - Indicates geometric accuracy
+   - Used for information matrix weighting in pose graph optimization
+
+**Downstream Usage:**
+
+- **Trajectory Building:** Each keyframe's refined pose is added to global trajectory
+- **Loop Closure Detection:** Keyframes stored with pose, scan, fitness, and RMSE for later loop detection (Section 2.5)
+- **Pose Graph Optimization:** When loops detected, trajectory is globally optimized to correct drift
+- **Visualization:** Trajectory and aligned scans published for real-time monitoring
+
+### 2.8 Method Ranking
 
 ICP methods are ranked using a weighted multi-criteria score:
 
@@ -826,19 +1168,9 @@ ICP methods are ranked using a weighted multi-criteria score:
 | **Consistency** | 15% | $\frac{1}{1 + \sigma_{fitness} + \sigma_{RMSE}}$ | Stable performance |
 | **Convergence** | 5% | $\frac{\min(\text{iterations})}{\text{iterations}}$ | Faster convergence |
 
-**Why These Weights?**
+### 2.9 Experimental Results
 
-- **Accuracy (35%)**: Most critical for localization
-- **Robustness (25%)**: Important for varying environments
-- **Speed (20%)**: Enables real-time operation
-- **Consistency (15%)**: Ensures predictable behavior
-- **Convergence (5%)**: Minor optimization bonus
-
-### 2.6 Experimental Results
-
-**Dataset:** Same as Part 1 (seq00, seq01, seq02)
-
-#### 2.6.1 Method Comparison
+#### 2.9.1 Method Comparison
 
 **Overall Performance:**
 
@@ -846,8 +1178,8 @@ ICP methods are ranked using a weighted multi-criteria score:
 |--------|-------------|--------------|------------------|--------------|
 | **Point-to-Point** | 0.974 | 0.041 | 5.0 | 0/3 |
 | **Point-to-Plane** | 0.974 | 0.040 | 6.0 | 0/3 |
-| **Point-to-Line** | **0.988** | **0.025** | **2.1** | 2/3 |
-| **GICP** | 0.973 | 0.042 | 3.5 | 1/3 |
+| **Point-to-Line** | **0.988** | **0.025** | **2.1** | 3/3 |
+| **GICP** | 0.973 | 0.042 | 3.5 | 0/3 |
 
 **Key Findings:**
 
@@ -865,42 +1197,37 @@ ICP methods are ranked using a weighted multi-criteria score:
    - Similar performance (designed for 3D)
    - Slower than Point-to-Line for 2D data
 
-#### 2.6.2 Sequence-Specific Results
+#### 2.9.2 Sequence-Specific Results
 
-**Sequence 00 (Empty Hallway):**
-
-![seq00 performance](part2_icp_refine/figures/seq00/icp_performance.png)
-
+**Sequence 00:**
 - **Winner**: Point-to-Line (score: 0.896)
 - **Loop Closures**: 0 (open trajectory)
 - **Best Fitness**: 0.990 (Point-to-Line)
 - **Fastest**: 2.8ms (Point-to-Line)
+![seq00 performance](part2_icp_refine/figures/seq00/icp_performance.png)
 
 ![seq00 maps](part2_icp_refine/figures/seq00/all_trajectories.png)
 
-**Sequence 01 (Sharp Turns):**
-
-![seq01 performance](part2_icp_refine/figures/seq01/icp_performance.png)
-
+**Sequence 01:**
 - **Winner**: Point-to-Line (score: 0.884)
 - **Loop Closures**: 0 (no revisits)
 - **Best Fitness**: 0.988 (Point-to-Line)
 - **Fastest**: 2.1ms (Point-to-Line)
+![seq01 performance](part2_icp_refine/figures/seq01/icp_performance.png)
 
 ![seq01 maps](part2_icp_refine/figures/seq01/all_trajectories.png)
 
-**Sequence 02 (Non-Aggressive Motion):**
-
-![seq02 performance](part2_icp_refine/figures/seq02/icp_performance.png)
-
+**Sequence 02:**
 - **Winner**: GICP (score: 0.911)
 - **Loop Closures**: 128 (multiple revisits!)
 - **Best Fitness**: 0.985 (Point-to-Line)
 - **GICP Runtime**: 1.6ms (fastest this sequence)
 
+![seq02 performance](part2_icp_refine/figures/seq02/icp_performance.png)
+
 ![seq02 maps](part2_icp_refine/figures/seq02/all_trajectories.png)
 
-#### 2.6.3 Loop Closure Analysis
+#### 2.9.3 Loop Closure Analysis
 
 ![loop closure analysis](part2_icp_refine/figures/loop_closure_analysis.png)
 
@@ -938,7 +1265,7 @@ When loops are detected, the system automatically:
 - **Computational Cost**: Levenberg-Marquardt optimization with 128 loop constraints completes in < 1 second
 - **Information Weighting**: Loop edges weighted 10× odometry edges to prioritize global consistency
 
-#### 2.6.4 Runtime Analysis
+#### 2.9.4 Runtime Analysis
 
 ![runtime distribution](part2_icp_refine/figures/seq00/runtime_boxplot.png)
 
@@ -951,7 +1278,7 @@ When loops are detected, the system automatically:
 
 All methods achieve **real-time performance** (< 100Hz LiDAR rate).
 
-### 2.7 ICP vs Wheel Odometry
+### 2.10 ICP vs Wheel Odometry
 
 **Comparison with Part 1 (EKF-only):**
 
@@ -972,23 +1299,6 @@ All methods achieve **real-time performance** (< 100Hz LiDAR rate).
 - **Feature-poor environments**: Long empty hallways (no geometric structure)
 - **High-speed motion**: Insufficient scan overlap
 - **Dynamic objects**: Moving people cause registration errors
-
-### 2.8 Conclusion
-
-**Part 2 Achievements:**
-
-✅ Implemented 4 ICP variants for 2D LiDAR scan matching
-✅ Point-to-Line ICP achieves best accuracy-speed tradeoff
-✅ Loop closure with pose graph optimization (128 loops in seq02)
-✅ Real-time performance (< 10ms per scan)
-✅ Validation follows SLAM best practices (slam_toolbox conventions)
-
-**Next Steps (Part 3):**
-
-Integrate with slam_toolbox for production-grade SLAM with:
-- Occupancy grid mapping
-- Sparse pose graph optimization
-- ROS2 navigation stack integration
 
 ---
 
