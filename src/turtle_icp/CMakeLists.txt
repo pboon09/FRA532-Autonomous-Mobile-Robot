@@ -29,6 +29,7 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   scripts/dummy_script.py
   scripts/turtle_icp_odom.py
+  scripts/turtle_icp_mapper.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
