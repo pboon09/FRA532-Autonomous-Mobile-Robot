@@ -20,7 +20,8 @@ from icp_point_to_point import PointToPointICP
 from utils import (
     save_figure, save_json, save_csv,
     plot_all_trajectories, plot_map_with_scans,
-    compute_trajectory_drift, compute_convergence_rate, compute_consistency_score
+    compute_trajectory_drift, compute_convergence_rate, compute_consistency_score,
+    create_occupancy_grid, plot_occupancy_grid
 )
 
 
@@ -344,6 +345,31 @@ class Experiment:
                 downsample=5
             )
             save_figure(fig, self.seq_dir / f'map_{method_name.lower().replace(" ", "_").replace("-", "_")}.png')
+
+        print(f"  Generating occupancy grid maps (matching turtle_icp_mapper)...")
+        for method_name in all_scan_data.keys():
+            # Create occupancy grid with same parameters as turtle_icp_mapper
+            occupancy_grid, grid_info = create_occupancy_grid(
+                all_trajectories[method_name],
+                all_scan_data[method_name],
+                resolution=0.05,
+                min_range=0.12,
+                max_range=3.5,
+                occupied_threshold=0.6,
+                free_threshold=0.4
+            )
+
+            if occupancy_grid.size > 0:
+                fig = plot_occupancy_grid(
+                    occupancy_grid,
+                    grid_info,
+                    trajectory=all_trajectories[method_name],
+                    title=f'{self.sequence_name}: {method_name} Occupancy Grid',
+                    show_trajectory=True
+                )
+                save_figure(fig, self.seq_dir / f'occupancy_grid_{method_name.lower().replace(" ", "_").replace("-", "_")}.png')
+                print(f"    {method_name}: Grid size {grid_info['width']}x{grid_info['height']} "
+                      f"@ {grid_info['resolution']}m resolution")
 
         print(f"  Generating combined time series plot...")
         import matplotlib.pyplot as plt

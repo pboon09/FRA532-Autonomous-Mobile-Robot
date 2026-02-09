@@ -1064,6 +1064,8 @@ The ICP odometry pipeline is evaluated using four key metrics:
 
 ![seq00 map](part2_icp_refine/figures/seq00/map_point_to_point.png)
 
+![seq00 occupacy grid](part2_icp_refine/figures/seq00/occupancy_grid_point_to_point.png)
+
 **Performance Metrics:**
 
 | Metric | Value |
@@ -1086,6 +1088,8 @@ The empty hallway provides a baseline environment with fitness score of 0.9957 a
 
 ![seq01 map](part2_icp_refine/figures/seq01/map_point_to_point.png)
 
+![seq01 occupacy grid](part2_icp_refine/figures/seq01/occupancy_grid_point_to_point.png)
+
 **Performance Metrics:**
 
 | Metric | Value |
@@ -1107,6 +1111,8 @@ Despite sharp turns, this sequence achieves the best fitness (0.9966) and RMSE (
 ![seq02 performance](part2_icp_refine/figures/seq02/icp_performance.png)
 
 ![seq02 map](part2_icp_refine/figures/seq02/map_point_to_point.png)
+
+![seq02 occupacy grid](part2_icp_refine/figures/seq02/occupancy_grid_point_to_point.png)
 
 **Performance Metrics:**
 

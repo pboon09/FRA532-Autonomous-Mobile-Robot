@@ -153,3 +153,150 @@ def plot_map_with_scans(trajectory, scan_data, title='Map with LiDAR Scans', dow
     ax.set_aspect('equal')
 
     return fig
+
+
+def bresenham(x0, y0, x1, y1):
+    cells = []
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    sx = 1 if x0 < x1 else -1
+    sy = 1 if y0 < y1 else -1
+    err = dx - dy
+
+    x, y = x0, y0
+    while True:
+        cells.append((x, y))
+        if x == x1 and y == y1:
+            break
+        e2 = 2 * err
+        if e2 > -dy:
+            err -= dy
+            x += sx
+        if e2 < dx:
+            err += dx
+            y += sy
+
+    return cells
+
+
+def create_occupancy_grid(trajectory, scan_data, resolution=0.05,
+                         min_range=0.12, max_range=3.5,
+                         occupied_threshold=0.6, free_threshold=0.4):
+    hit_count = {}
+    miss_count = {}
+
+    def world_to_map(x, y):
+        map_x = int(np.floor(x / resolution))
+        map_y = int(np.floor(y / resolution))
+        return map_x, map_y
+
+    for i in range(len(trajectory)):
+        if i >= len(scan_data):
+            break
+
+        pose = trajectory[i]
+        robot_x, robot_y, robot_theta = pose[0], pose[1], pose[2]
+        robot_mx, robot_my = world_to_map(robot_x, robot_y)
+
+        ranges = np.array(scan_data[i]['ranges'])
+        angles = np.array(scan_data[i]['angles'])
+
+        valid = np.isfinite(ranges) & (ranges > min_range) & (ranges < max_range)
+        ranges = ranges[valid]
+        angles = angles[valid]
+
+        for r, angle in zip(ranges, angles):
+            global_angle = robot_theta + angle
+            end_x = robot_x + r * np.cos(global_angle)
+            end_y = robot_y + r * np.sin(global_angle)
+
+            end_mx, end_my = world_to_map(end_x, end_y)
+
+            hit_count[(end_mx, end_my)] = hit_count.get((end_mx, end_my), 0) + 1
+
+            ray_cells = bresenham(robot_mx, robot_my, end_mx, end_my)
+            for cx, cy in ray_cells[:-1]:
+                miss_count[(cx, cy)] = miss_count.get((cx, cy), 0) + 1
+
+    all_cells = set(hit_count.keys()) | set(miss_count.keys())
+    if not all_cells:
+        return np.array([]), {}
+
+    all_x = [cell[0] for cell in all_cells]
+    all_y = [cell[1] for cell in all_cells]
+    min_mx, max_mx = min(all_x), max(all_x)
+    min_my, max_my = min(all_y), max(all_y)
+
+    width = max_mx - min_mx + 1
+    height = max_my - min_my + 1
+    occupancy_grid = np.full((height, width), -1, dtype=np.int8)
+
+    for (mx, my) in all_cells:
+        if min_mx <= mx <= max_mx and min_my <= my <= max_my:
+            hits = hit_count.get((mx, my), 0)
+            misses = miss_count.get((mx, my), 0)
+            total = hits + misses
+
+            if total > 0:
+                hit_ratio = hits / total
+                grid_x = mx - min_mx
+                grid_y = my - min_my
+
+                if hit_ratio > occupied_threshold:
+                    occupancy_grid[grid_y, grid_x] = 100
+                elif hit_ratio < free_threshold:
+                    occupancy_grid[grid_y, grid_x] = 0
+
+    grid_info = {
+        'resolution': resolution,
+        'width': width,
+        'height': height,
+        'origin_x': min_mx * resolution,
+        'origin_y': min_my * resolution,
+        'min_mx': min_mx,
+        'max_mx': max_mx,
+        'min_my': min_my,
+        'max_my': max_my
+    }
+
+    return occupancy_grid, grid_info
+
+
+def plot_occupancy_grid(occupancy_grid, grid_info, trajectory=None,
+                       title='Occupancy Grid Map', show_trajectory=True):
+    fig, ax = plt.subplots(figsize=(14, 12))
+
+    cmap = plt.cm.colors.ListedColormap(['white', 'gray', 'black'])
+    bounds = [-1, 33, 66, 100]
+    norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
+
+    extent = [
+        grid_info['origin_x'],
+        grid_info['origin_x'] + grid_info['width'] * grid_info['resolution'],
+        grid_info['origin_y'],
+        grid_info['origin_y'] + grid_info['height'] * grid_info['resolution']
+    ]
+
+    im = ax.imshow(occupancy_grid, cmap=cmap, norm=norm,
+                   origin='lower', extent=extent, interpolation='nearest')
+
+    if show_trajectory and trajectory is not None:
+        traj_x = [p[0] for p in trajectory]
+        traj_y = [p[1] for p in trajectory]
+        ax.plot(traj_x, traj_y, 'b-', linewidth=2, label='Trajectory', alpha=0.7, zorder=5)
+        ax.plot(traj_x[0], traj_y[0], 'go', markersize=12, label='Start',
+                zorder=10, markeredgecolor='black', markeredgewidth=1.5)
+        ax.plot(traj_x[-1], traj_y[-1], 'r^', markersize=10, label='End',
+                zorder=10, markeredgecolor='black', markeredgewidth=1.5)
+        ax.legend(loc='best', fontsize=11, framealpha=0.9)
+
+    cbar = plt.colorbar(im, ax=ax, ticks=[-1, 0, 100], shrink=0.8)
+    cbar.ax.set_yticklabels(['Unknown', 'Free', 'Occupied'])
+
+    ax.set_xlabel('X [m]', fontsize=13, fontweight='bold')
+    ax.set_ylabel('Y [m]', fontsize=13, fontweight='bold')
+    ax.set_title(title, fontsize=14, fontweight='bold')
+    ax.set_aspect('equal')
+    ax.grid(True, alpha=0.2, linestyle='--', color='blue', linewidth=0.5)
+
+    return fig
