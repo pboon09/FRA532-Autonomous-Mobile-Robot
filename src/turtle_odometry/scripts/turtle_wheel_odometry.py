@@ -23,7 +23,7 @@ class TurtleWheelOdometry(Node):
         self.rate = 20.0
         self.last_time = None
 
-        self.odom_pub = self.create_publisher(Odometry, '/wheel_odom', 10)
+        self.odom_pub = self.create_publisher(Odometry, '/odometry/wheel_odom', 10)
         self.sub = self.create_subscription(JointState, '/joint_states', self.joint_state_callback, 10)
         self.timer = self.create_timer(1.0/self.rate, self.timer_callback)
 
