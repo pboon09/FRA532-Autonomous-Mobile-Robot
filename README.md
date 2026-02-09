@@ -10,10 +10,10 @@
     - [Running](#running)
   - [Part 1: EKF Odometry Fusion](#part-1-ekf-odometry-fusion)
     - [1.1 Wheel Odometry](#11-wheel-odometry)
-      - [Robot Parameters](#robot-parameters)
-      - [Wheel Displacement](#wheel-displacement)
-      - [ICC (Instantaneous Center of Curvature) Kinematics](#icc-instantaneous-center-of-curvature-kinematics)
-      - [Robot Velocity](#robot-velocity)
+      - [1.1.1 Robot Parameters](#111-robot-parameters)
+      - [1.1.2 Wheel Displacement](#112-wheel-displacement)
+      - [1.1.3 ICC (Instantaneous Center of Curvature) Kinematics](#113-icc-instantaneous-center-of-curvature-kinematics)
+      - [1.1.4 Robot Velocity](#114-robot-velocity)
     - [1.2 Extended Kalman Filter](#12-extended-kalman-filter)
       - [1.2.1 State Vector Design](#121-state-vector-design)
       - [1.2.2 Motion Model (Prediction)](#122-motion-model-prediction)
@@ -21,27 +21,26 @@
       - [1.2.4 EKF Algorithm](#124-ekf-algorithm)
       - [1.2.5 Coordinate Frames](#125-coordinate-frames)
       - [1.2.6 Noise Covariance](#126-noise-covariance)
-    - [1.3 Experimental Validation](#13-experimental-validation)
-      - [Experimental Setup](#experimental-setup)
-      - [Filter Validation](#filter-validation)
-      - [Trajectory Comparison](#trajectory-comparison)
-      - [Time Series Analysis](#time-series-analysis)
+    - [1.3 Experimental Results](#13-experimental-results)
+      - [1.3.1 Experimental Setup](#131-experimental-setup)
+      - [1.3.2 Filter Validation](#132-filter-validation)
+      - [1.3.3 Trajectory Comparison](#133-trajectory-comparison)
+      - [1.3.4 Time Series Analysis](#134-time-series-analysis)
   - [Part 2: ICP Odometry Refinement](#part-2-icp-odometry-refinement)
     - [2.1 ICP Problem Formulation](#21-icp-problem-formulation)
     - [2.2 ICP Algorithm](#22-icp-algorithm)
     - [2.3 Nearest Neighbor Search for Correspondence](#23-nearest-neighbor-search-for-correspondence)
-      - [Naive Approach: Linear Search](#naive-approach-linear-search)
-      - [KD-Tree Optimization](#kd-tree-optimization)
+      - [2.3.1 Naive Approach: Linear Search](#231-naive-approach-linear-search)
+      - [2.3.2 KD-Tree Optimization](#232-kd-tree-optimization)
     - [2.4 Point-to-Point ICP Implementation](#24-point-to-point-icp-implementation)
     - [2.5 ICP Odometry Pipeline](#25-icp-odometry-pipeline)
     - [2.6 Voxel Downsampling](#26-voxel-downsampling)
     - [2.7 Scan-to-Scan vs Scan-to-Map Matching](#27-scan-to-scan-vs-scan-to-map-matching)
-    - [2.9 Experimental Results](#29-experimental-results)
-      - [2.9.1 Method Comparison](#291-method-comparison)
-      - [2.9.2 Sequence-Specific Results](#292-sequence-specific-results)
-      - [2.9.3 Loop Closure Analysis](#293-loop-closure-analysis)
-      - [2.9.4 Runtime Analysis](#294-runtime-analysis)
-    - [2.10 ICP vs Wheel Odometry](#210-icp-vs-wheel-odometry)
+    - [2.8 Experimental Results](#28-experimental-results)
+      - [2.8.1 Performance Metrics](#281-performance-metrics)
+      - [2.8.2 Results by Sequence](#282-results-by-sequence)
+      - [2.8.3 Comparison: Wheel Odometry vs EKF vs ICP](#283-comparison-wheel-odometry-vs-ekf-vs-icp)
+      - [2.8.4 Overall Performance Analysis](#284-overall-performance-analysis)
   - [Part 3: Full SLAM with slam\_toolbox](#part-3-full-slam-with-slam_toolbox)
     - [3.1 What is slam\_toolbox?](#31-what-is-slam_toolbox)
     - [3.2 Available Launch Configurations](#32-available-launch-configurations)
@@ -137,14 +136,14 @@ This section presents a sensor fusion approach combining wheel odometry and IMU 
 
 ### 1.1 Wheel Odometry
 
-#### Robot Parameters
+#### 1.1.1 Robot Parameters
 
 | Parameter | Symbol | Value | Description |
 |-----------|--------|-------|-------------|
 | Wheel radius | r | 0.033 m | TurtleBot3 Burger wheel radius |
 | Track width | b | 0.160 m | Distance between wheel centers |
 
-#### Wheel Displacement
+#### 1.1.2 Wheel Displacement
 
 The wheel displacements are computed from encoder position changes:
 
@@ -154,7 +153,7 @@ The wheel displacements are computed from encoder position changes:
 
 where $\Delta \theta_r$ and $\Delta \theta_l$ represent the angular displacement of the right and left wheels in radians.
 
-#### ICC (Instantaneous Center of Curvature) Kinematics
+#### 1.1.3 ICC (Instantaneous Center of Curvature) Kinematics
 
 For differential drive robots, the ICC method provides accurate pose integration by computing the instantaneous turning center.
 
@@ -194,7 +193,7 @@ When the robot moves straight, $R \to \infty$. The pose update simplifies to:
 x' = x + \frac{\Delta s_l + \Delta s_r}{2} \cos\theta, \quad y' = y + \frac{\Delta s_l + \Delta s_r}{2} \sin\theta
 ```
 
-#### Robot Velocity
+#### 1.1.4 Robot Velocity
 
 The linear and angular velocities are derived from wheel displacements:
 
@@ -469,7 +468,7 @@ However, these covariances do not appear in the Kalman gain $K$ because $H = [0,
 
 **Future Extension:** If position measurements were added (e.g., GPS), then $H$ would observe $x$ and $y$, making $K_x$ and $K_y$ non-zero. In that case, $Q_{xx}$ and $Q_{yy}$ would become meaningful tuning parameters.
 
-### 1.3 Experimental Validation
+### 1.3 Experimental Results
 
 <p align="center">
   <img src="media/part1_demo.gif" width="100%">
@@ -478,7 +477,7 @@ However, these covariances do not appear in the Kalman gain $K$ because $H = [0,
 
 This section validates the EKF implementation using recorded bag files from a TurtleBot3 Burger navigating FIBO Floor 3 corridors.
 
-#### Experimental Setup
+#### 1.3.1 Experimental Setup
 
 **Dataset:**
 | Sequence | Description | Duration | Samples |
@@ -496,7 +495,7 @@ This section validates the EKF implementation using recorded bag files from a Tu
 | Wheel radius | 0.033 m |
 | Track width | 0.160 m |
 
-#### Filter Validation
+#### 1.3.2 Filter Validation
 
 We validate filter consistency using **innovation statistics** following [Bris & Kolarik (2014)](https://pmc.ncbi.nlm.nih.gov/articles/PMC4239867/):
 
@@ -547,7 +546,7 @@ Near-zero mean confirms the filter is unbiased. Small std confirms the filter is
 
 ![seq02 innovation](part1_ekf_odom/figures/seq02/innovation_analysis.png)
 
-#### Trajectory Comparison
+#### 1.3.3 Trajectory Comparison
 
 **Sequence 00:**
 
@@ -561,7 +560,7 @@ Near-zero mean confirms the filter is unbiased. Small std confirms the filter is
 
 ![seq02 trajectory](part1_ekf_odom/figures/seq02/trajectory.png)
 
-#### Time Series Analysis
+#### 1.3.4 Time Series Analysis
 
 **Sequence 00:**
 
@@ -638,7 +637,7 @@ The Iterative Closest Point algorithm solves the registration problem through an
 
 The correspondence step finds matches between source and target point clouds. For each point $p_i$ in the source cloud, we must find its nearest neighbor $q_i$ in the target cloud.
 
-#### Naive Approach: Linear Search
+#### 2.3.1 Naive Approach: Linear Search
 
 **Algorithm:**
 ```
@@ -659,7 +658,7 @@ For each point p_i in source cloud P:
 
 **Problem:** Too slow for Online SLAM
 
-#### KD-Tree Optimization
+#### 2.3.2 KD-Tree Optimization
 
 **Data Structure:**
 
@@ -974,137 +973,216 @@ We use scan-to-map matching with local map management:
 - Local map downsampled for computational efficiency
 - Provides balance between accuracy and real-time performance
 
-### 2.9 Experimental Results
+### 2.8 Experimental Results
 
-#### 2.9.1 Method Comparison
+<p align="center">
+  <img src="media/part1_demo.gif" width="100%">
+</p>
 
-**Overall Performance:**
 
-| Method | Avg Fitness | Avg RMSE (m) | Avg Runtime (ms) | Winner Count |
-|--------|-------------|--------------|------------------|--------------|
-| **Point-to-Point** | 0.974 | 0.041 | 5.0 | 0/3 |
-| **Point-to-Plane** | 0.974 | 0.040 | 6.0 | 0/3 |
-| **Point-to-Line** | **0.988** | **0.025** | **2.1** | 3/3 |
-| **GICP** | 0.973 | 0.042 | 3.5 | 0/3 |
+This section evaluates the ICP odometry pipeline using recorded bag files from a TurtleBot3 Burger navigating FIBO Floor 3 corridors.
 
-**Key Findings:**
+#### 2.8.1 Performance Metrics
 
-1. **Point-to-Line** wins most sequences with:
-   - Best fitness (0.988 avg)
-   - Lowest RMSE (0.025m avg)
-   - Fastest runtime (2.1ms avg)
-   - **Optimal for 2D LiDAR SLAM**
+**Dataset:**
+| Sequence | Description | Trajectory | Keyframes |
+|----------|-------------|------------|-----------|
+| seq00 | Empty hallway (baseline) | 70.3m | 10,504 |
+| seq01 | Non-empty hallway with sharp turns | 57.7m | 7,854 |
+| seq02 | Non-empty hallway with smooth motion | 72.4m | 11,975 |
 
-2. **GICP** wins seq02 due to:
-   - Probabilistic formulation handles non-aggressive motion
-   - Covariance-based matching robust to partial overlaps
+**Evaluation Metrics:**
 
-3. **Point-to-Point/Plane**:
-   - Similar performance (designed for 3D)
-   - Slower than Point-to-Line for 2D data
+The ICP odometry pipeline is evaluated using four key metrics:
 
-#### 2.9.2 Sequence-Specific Results
+**Fitness Score:**
+- **Definition**: Ratio of successfully matched points to total source points
+- **Formula**: $f = N_{inliers} / N_{source}$
+- **Range**: 0.0 to 1.0
+- **Interpretation**: Measures the percentage of points in the current scan that found valid correspondences in the local map.
+- **What it indicates**: Overall alignment quality and scan overlap
+
+**RMSE (Root Mean Square Error):**
+- **Definition**: Average geometric distance between matched point pairs after alignment
+- **Formula**: $RMSE = \sqrt{\frac{1}{N_{inliers}}\sum \|p_i - q_i\|^2}$
+- **Unit**: meters
+- **Interpretation**: Measures how closely the aligned scans match geometrically. Lower values indicate tighter alignment.
+- **What it indicates**: Geometric accuracy of the registration
+
+**Runtime:**
+- **Definition**: Average time taken to execute one ICP iteration
+- **Unit**: milliseconds (ms)
+- **Interpretation**: Computational efficiency of the scan matching process
+- **What it indicates**: Real-time capability
+
+**Consistency Score:**
+- **Definition**: Measure of stability across all ICP registrations
+- **Formula**: $consistency = 1.0 - (std(fitness) + std(RMSE)) / 2.0$
+- **Range**: 0.0 to 1.0
+- **Interpretation**: Lower variance in fitness and RMSE indicates stable, predictable performance
+- **What it indicates**: Reliability and robustness of the pipeline across the entire trajectory
+
+#### 2.8.2 Results by Sequence
 
 **Sequence 00:**
-- **Winner**: Point-to-Line (score: 0.896)
-- **Loop Closures**: 0 (open trajectory)
-- **Best Fitness**: 0.990 (Point-to-Line)
-- **Fastest**: 2.8ms (Point-to-Line)
+![seq00 trajectory](part2_icp_refine/figures/seq00/all_trajectories.png)
+
 ![seq00 performance](part2_icp_refine/figures/seq00/icp_performance.png)
 
-![seq00 maps](part2_icp_refine/figures/seq00/all_trajectories.png)
+![seq00 map](part2_icp_refine/figures/seq00/map_point_to_point.png)
+
+**Performance Metrics:**
+
+| Metric | Value |
+|--------|-------|
+| Avg Fitness | 0.9957 |
+| Avg RMSE | 0.041m |
+| Avg Runtime | 1.94ms |
+| Consistency Score | 0.9849 |
+
+**Performance Discussion:**
+
+The empty hallway provides a baseline environment with fitness score of 0.9957 and RMSE of 0.041m (4cm average error). The simple wall geometry enables the fastest runtime (1.94ms) but results in the lowest consistency score (0.9849) due to fewer geometric constraints in feature-sparse conditions.
+
+**Key Insight**: Feature-sparse environments achieve fast performance but lower consistency due to weaker geometric constraints compared to obstacle-rich environments.
 
 **Sequence 01:**
-- **Winner**: Point-to-Line (score: 0.884)
-- **Loop Closures**: 0 (no revisits)
-- **Best Fitness**: 0.988 (Point-to-Line)
-- **Fastest**: 2.1ms (Point-to-Line)
+![seq01 trajectory](part2_icp_refine/figures/seq01/all_trajectories.png)
+
 ![seq01 performance](part2_icp_refine/figures/seq01/icp_performance.png)
 
-![seq01 maps](part2_icp_refine/figures/seq01/all_trajectories.png)
+![seq01 map](part2_icp_refine/figures/seq01/map_point_to_point.png)
+
+**Performance Metrics:**
+
+| Metric | Value |
+|--------|-------|
+| Avg Fitness | 0.9966 |
+| Avg RMSE | 0.035m |
+| Avg Runtime | 2.15ms |
+| Consistency Score | 0.9885 |
+
+**Performance Discussion:**
+
+Despite sharp turns, this sequence achieves the best fitness (0.9966) and RMSE (0.035m). Sharp turns trigger higher keyframe density, creating denser local maps with richer geometric constraints. Obstacles provide additional features that strengthen alignment compared to empty hallways. Runtime increases slightly to 2.15ms but remains real-time capable.
+
+**Key Insight**: Sharp turns improve ICP performance through increased keyframe density and richer geometric features.
 
 **Sequence 02:**
-- **Winner**: GICP (score: 0.911)
-- **Loop Closures**: 128 (multiple revisits!)
-- **Best Fitness**: 0.985 (Point-to-Line)
-- **GICP Runtime**: 1.6ms (fastest this sequence)
+![seq02 trajectory](part2_icp_refine/figures/seq02/all_trajectories.png)
 
 ![seq02 performance](part2_icp_refine/figures/seq02/icp_performance.png)
 
-![seq02 maps](part2_icp_refine/figures/seq02/all_trajectories.png)
+![seq02 map](part2_icp_refine/figures/seq02/map_point_to_point.png)
 
-#### 2.9.3 Loop Closure Analysis
+**Performance Metrics:**
 
-![loop closure analysis](part2_icp_refine/figures/loop_closure_analysis.png)
+| Metric | Value |
+|--------|-------|
+| Avg Fitness | 0.9967 |
+| Avg RMSE | 0.036m |
+| Avg Runtime | 2.09ms |
+| Consistency Score | 0.9894 |
 
-**Loop Closure Summary:**
+**Performance Discussion:**
 
-| Sequence | Best Method | Loops Detected | Fitness (Before) | Fitness (After) | RMSE (Before) | RMSE (After) |
-|----------|-------------|----------------|------------------|-----------------|---------------|--------------|
-| seq00 | GICP | 0 | 0.990 | - | 0.024m | - |
-| seq01 | GICP | **14** | 0.975 | 0.975 | 0.074m | 0.074m |
-| seq02 | GICP | **128** | 0.973 | 0.973 | 0.078m | 0.078m |
+This sequence achieves the best consistency score (0.9894) with fitness of 0.9967 and RMSE of 0.036m. Smooth motion provides better odometry initial guesses, allowing ICP to start closer to the true solution. High scan overlap makes correspondence matching easier and more stable. Runtime of 2.09ms balances speed and accuracy.
 
-**Sequences with Loop Closures:**
+**Key Insight**: Smooth motion achieves the most stable and predictable performance over long trajectories through good odometry initial guesses and consistent scan overlap.
 
-When loops are detected, the system automatically:
-1. Optimizes the trajectory using pose graph optimization
-2. Re-evaluates ICP performance on the optimized trajectory
-3. Generates performance comparison plots
+#### 2.8.3 Comparison: Wheel Odometry vs EKF vs ICP
 
-**seq01 Loop Closure (14 loops):**
+This section compares the three odometry methods across all sequences. Since ground truth is not available, the comparison is qualitative based on trajectory consistency and time-series analysis.
 
-![seq01 loop closure](part2_icp_refine/figures/seq01/loop_closure_comparison.png)
+**Sequence 00:**
 
-![seq01 performance](part2_icp_refine/figures/seq01/loop_closure_performance.png)
+![seq00 comparison](part2_icp_refine/figures/seq00/time_series.png)
 
-**seq02 Loop Closure (128 loops):**
+**Sequence 01:**
 
-![seq02 loop closure](part2_icp_refine/figures/seq02/loop_closure_comparison.png)
+![seq01 comparison](part2_icp_refine/figures/seq01/time_series.png)
 
-![seq02 performance](part2_icp_refine/figures/seq02/loop_closure_performance.png)
+**Sequence 02:**
 
-**Loop Closure Impact:**
+![seq02 comparison](part2_icp_refine/figures/seq02/time_series.png)
 
-- **Trajectory Consistency**: Loop closure optimization distributes drift across the entire trajectory, creating globally consistent maps
-- **Performance Stability**: Fitness and RMSE metrics remain stable after optimization
-- **Computational Cost**: Levenberg-Marquardt optimization with 128 loop constraints completes in < 1 second
-- **Information Weighting**: Loop edges weighted 10× odometry edges to prioritize global consistency
+**Method Characteristics:**
 
-#### 2.9.4 Runtime Analysis
+- **Wheel Odometry**: Baseline encoder-based estimates with unbounded position and heading drift
+- **EKF**: Fuses wheel odometry with IMU heading, corrects rotation drift only
+- **ICP**: Refines pose using LiDAR scan matching, corrects both position and heading
 
-![runtime distribution](part2_icp_refine/figures/seq00/runtime_boxplot.png)
+**Numerical Comparison - Final Poses:**
 
-**Runtime Characteristics:**
-
-- **Point-to-Line**: Fastest, most consistent (1.4-2.8ms)
-- **GICP**: Fast but variable (1.6-4.9ms)
-- **Point-to-Point**: Moderate (3.3-6.2ms)
-- **Point-to-Plane**: Slowest (3.3-10.1ms)
-
-All methods achieve **real-time performance** (< 100Hz LiDAR rate).
-
-### 2.10 ICP vs Wheel Odometry
-
-**Comparison with Part 1 (EKF-only):**
-
-| Method | Position Drift | Heading Drift | Computational Cost |
-|--------|---------------|---------------|-------------------|
-| Wheel Odometry | High (unbounded) | Corrected by IMU | Minimal |
-| EKF (Part 1) | High (x, y uncorrected) | Low (IMU fusion) | Low |
-| **ICP (Part 2)** | **Low (geometric constraints)** | **Low (scan alignment)** | Moderate |
+| Sequence | Method | Final Position (x, y) [m] | Final Heading [°] | Heading Deviation from IMU [°] |
+|----------|--------|---------------------------|-------------------|-------------------------------|
+| **seq00** | Wheel Odom | (2.73, -3.40) | 37.86 | 6.98 |
+| | EKF | (-0.25, -3.24) | 34.94 | 0.08 |
+| | ICP | (1.35, -0.02) | 6.79 | - |
+| **seq01** | Wheel Odom | (-3.70, -3.75) | 36.75 | 20.35 |
+| | EKF | (2.03, 0.03) | -0.49 | 0.14 |
+| | ICP | (1.85, -0.58) | 2.08 | - |
+| **seq02** | Wheel Odom | (0.32, -1.27) | 47.85 | 5.24 |
+| | EKF | (2.78, -0.96) | 37.54 | 0.09 |
+| | ICP | (4.74, 0.85) | 15.66 | - |
 
 **Key Improvements:**
 
-1. **Position Correction**: ICP provides independent geometric constraints for x, y
-2. **Drift Reduction**: Scan matching limits accumulated error
-3. **Loop Closure**: Enables global consistency in revisited areas
+**1. Wheel Odometry → EKF (IMU Fusion):**
+- **Problem Addressed**: Wheel encoders accumulate angular drift over time due to compounding measurement errors
+- **Solution**: IMU provides absolute orientation measurements to correct accumulated heading drift
+- **How It Works**: EKF fuses wheel velocity with IMU heading, using Kalman filtering to optimally combine both sources
+- **What Gets Fixed**: Heading (θ) drift is corrected through independent IMU observations
+- **What Remains Broken**: Position (x, y) still accumulates unbounded drift - no sensor measures absolute position
+- **Trade-off**: Minimal computation overhead for significant heading accuracy improvement
 
-**When ICP Fails:**
+**2. EKF → ICP (LiDAR-Based Refinement):**
+- **Paradigm Shift**: Changes from dead reckoning (internal sensors) to environment-based localization (external observations)
+- **Core Idea**: Use LiDAR to observe geometric structure and infer robot motion from environmental consistency
+- **How It Works**: Align current scan against local map of recent keyframes using geometric constraints
+- **Matching Process**: Find point correspondences between clouds and solve for rigid transformation minimizing alignment error
+- **What Gets Fixed**: Both position (x, y) and heading (θ) corrected simultaneously through geometric alignment
+- **Accuracy Level**: Centimeter-level pose refinement through continuous scan matching
+- **Key Limitation**: Local optimization only - no global pose graph optimization or loop closure detection
+- **Result**: Drift still accumulates over long distances without revisiting known areas
 
-- **Feature-poor environments**: Long empty hallways (no geometric structure)
-- **High-speed motion**: Insufficient scan overlap
-- **Dynamic objects**: Moving people cause registration errors
+**Limitations:**
+
+Without ground truth, absolute trajectory error cannot be quantified. The comparison relies on visual analysis of trajectory consistency and internal ICP quality metrics.
+
+#### 2.8.4 Overall Performance Analysis
+
+**Performance Comparison:**
+
+| Sequence | Environment | Fitness | RMSE (m) | Runtime (ms) | Consistency |
+|----------|-------------|---------|----------|--------------|-------------|
+| **seq00** | Empty Hallway | 0.9957 | 0.041 | **1.94** | 0.9849 |
+| **seq01** | Sharp Turns | **0.9966** | **0.035** | 2.15 | 0.9885 |
+| **seq02** | Smooth Motion | **0.9967** | 0.036 | 2.09 | **0.9894** |
+
+**Key Findings:**
+
+1. **Fitness (0.9957-0.9967)**: All sequences achieve >99.5% point alignment across all environments.
+
+2. **RMSE (0.035-0.041m)**: Geometric error under 4cm with only 6mm difference between best and worst cases.
+
+3. **Runtime (1.94-2.15ms)**: Real-time capable at 400-500Hz, well above 10Hz LiDAR rates.
+
+4. **Consistency (0.9849-0.9894)**: High stability with low variance across all sequences.
+
+**Performance Trends:**
+
+- **Sharp turns outperform baseline**: Higher keyframe density and richer geometric features improve fitness and RMSE.
+
+- **Smooth motion achieves best consistency**: Predictable motion with good odometry initial guesses provides most stable performance.
+
+- **Real-time capability confirmed**: <2.5ms runtime enables deployment on resource-constrained robots with headroom for other components.
+
+- **Environment richness matters**: Obstacles improve performance by providing stronger geometric constraints.
+
+**Conclusion:**
+
+The ICP odometry pipeline demonstrates robust, accurate, and real-time performance across diverse environments and motion patterns. The results validate that scan-to-map matching with local keyframe maps provides reliable odometry refinement suitable for mobile robot navigation.
 
 ---
 
