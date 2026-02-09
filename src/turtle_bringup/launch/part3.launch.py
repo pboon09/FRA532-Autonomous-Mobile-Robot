@@ -15,6 +15,7 @@ def generate_launch_description():
     slam_toolbox_pkg = get_package_share_directory('slam_toolbox')
 
     rviz_config = os.path.join(bringup_pkg, 'rviz', 'slam.rviz')
+    ekf_config = os.path.join(ekf_pkg, 'config', 'ekf_params.yaml')
 
     use_sim_time = {'use_sim_time': True}
 
@@ -24,10 +25,12 @@ def generate_launch_description():
         )
     )
 
-    ekf_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(ekf_pkg, 'launch', 'ekf.launch.py')
-        )
+    ekf_node = Node(
+        package='turtle_ekf',
+        executable='turtle_ekf_node',
+        name='turtle_ekf_node',
+        output='screen',
+        parameters=[ekf_config, use_sim_time]
     )
 
     wheel_odometry = Node(
@@ -64,10 +67,19 @@ def generate_launch_description():
         }.items()
     )
 
+    icp_odometry = Node(
+        package='turtle_icp',
+        executable='turtle_icp_odom.py',
+        name='turtle_icp_odom',
+        output='screen',
+        parameters=[use_sim_time, {'publish_tf': False}]
+    )
+
     return LaunchDescription([
         robot_state_publisher,
         wheel_odometry,
-        ekf_launch,
+        ekf_node,
+        icp_odometry,
         slam_toolbox_launch,
         turtle_path,
         rviz2,
