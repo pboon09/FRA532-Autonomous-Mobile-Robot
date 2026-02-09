@@ -5,6 +5,8 @@ import sys
 import math
 import numpy as np
 from pathlib import Path
+from collections import deque
+import open3d as o3d
 
 part1_path = Path(__file__).parent.parent / 'part1_ekf_odom'
 sys.path.insert(0, str(part1_path))
@@ -15,18 +17,10 @@ sys.path.pop(0)
 from bag_reader import BagReader
 from lidar_processor import LidarProcessor
 from icp_point_to_point import PointToPointICP
-from icp_point_to_plane import PointToPlaneICP
-from icp_point_to_line import PointToLineICP
-from icp_gicp import GICP
-from loop_closure import LoopClosure
 from utils import (
     save_figure, save_json, save_csv,
-    plot_all_trajectories, plot_icp_performance,
-    plot_loop_closure_comparison,
-    plot_runtime_boxplot, compute_trajectory_drift,
-    compute_final_position_error, rank_methods, plot_map_with_scans,
-    compute_convergence_rate, compute_consistency_score,
-    plot_loop_closure_analysis, get_method_color
+    plot_all_trajectories, plot_map_with_scans,
+    compute_trajectory_drift, compute_convergence_rate, compute_consistency_score
 )
 
 
@@ -47,9 +41,50 @@ class Experiment:
         self.wheel_radius = 0.033
         self.track_width = 0.160
 
+        self.local_map_size = 15
+        self.local_map_voxel_size = 0.05
+
         os.makedirs(self.seq_dir, exist_ok=True)
         os.makedirs(self.json_dir, exist_ok=True)
         os.makedirs(self.csv_dir, exist_ok=True)
+
+    def transform_pointcloud_to_global(self, pcd, pose):
+        x, y, theta = pose
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+
+        points = np.asarray(pcd.points)
+        transformed = np.zeros_like(points)
+        transformed[:, 0] = points[:, 0] * cos_t - points[:, 1] * sin_t + x
+        transformed[:, 1] = points[:, 0] * sin_t + points[:, 1] * cos_t + y
+        if points.shape[1] > 2:
+            transformed[:, 2] = points[:, 2]
+
+        transformed_pcd = o3d.geometry.PointCloud()
+        transformed_pcd.points = o3d.utility.Vector3dVector(transformed)
+        if pcd.has_normals():
+            normals = np.asarray(pcd.normals)
+            transformed_normals = np.zeros_like(normals)
+            transformed_normals[:, 0] = normals[:, 0] * cos_t - normals[:, 1] * sin_t
+            transformed_normals[:, 1] = normals[:, 0] * sin_t + normals[:, 1] * cos_t
+            if normals.shape[1] > 2:
+                transformed_normals[:, 2] = normals[:, 2]
+            transformed_pcd.normals = o3d.utility.Vector3dVector(transformed_normals)
+
+        return transformed_pcd
+
+    def build_local_map(self, keyframe_clouds):
+        if len(keyframe_clouds) == 0:
+            return None
+
+        merged = o3d.geometry.PointCloud()
+        for pcd in keyframe_clouds:
+            merged += pcd
+
+        if self.local_map_voxel_size > 0 and len(merged.points) > 0:
+            merged = merged.voxel_down_sample(self.local_map_voxel_size)
+
+        return merged
 
     def run_ekf_odometry(self, data):
         wheel_odom = WheelOdometry(self.wheel_radius, self.track_width)
@@ -106,31 +141,25 @@ class Experiment:
         detailed_results = []
         scan_data = []
 
-        prev_pcd = None
+        local_map_keyframes = deque(maxlen=self.local_map_size)
+
         prev_ekf_pose = None
         current_icp_pose = [0.0, 0.0, 0.0]
+        last_kf_pose = [0.0, 0.0, 0.0]
 
         for i, res in enumerate(ekf_results):
             current_ekf_pose = res['ekf_pose']
 
-            if not processor.is_keyframe(current_ekf_pose):
-                continue
-
-            current_pcd = processor.preprocess(
-                res['scan_ranges'],
-                res['scan_angles'],
-                compute_normals=(icp_method.name in ["Point-to-Plane", "GICP"])
-            )
-
-            if len(current_pcd.points) < 10:
-                continue
-
-            if prev_pcd is None:
-                prev_pcd = current_pcd
+            if prev_ekf_pose is None:
                 prev_ekf_pose = current_ekf_pose
-                trajectory.append([0.0, 0.0, 0.0])
-                current_icp_pose = [0.0, 0.0, 0.0]
+                trajectory.append([res['timestamp'], 0.0, 0.0, 0.0])
                 scan_data.append({'ranges': res['scan_ranges'], 'angles': res['scan_angles']})
+
+                current_pcd = processor.preprocess(res['scan_ranges'], res['scan_angles'], compute_normals=False)
+                if len(current_pcd.points) >= 10:
+                    global_pcd = self.transform_pointcloud_to_global(current_pcd, current_icp_pose)
+                    local_map_keyframes.append(global_pcd)
+                    last_kf_pose = current_icp_pose.copy()
                 continue
 
             dx_ekf = current_ekf_pose[0] - prev_ekf_pose[0]
@@ -138,142 +167,72 @@ class Experiment:
             dtheta_ekf = current_ekf_pose[2] - prev_ekf_pose[2]
             dtheta_ekf = math.atan2(math.sin(dtheta_ekf), math.cos(dtheta_ekf))
 
-            cos_prev = math.cos(-prev_ekf_pose[2])
-            sin_prev = math.sin(-prev_ekf_pose[2])
-            dx_rel = dx_ekf * cos_prev - dy_ekf * sin_prev
-            dy_rel = dx_ekf * sin_prev + dy_ekf * cos_prev
-
-            init_transform = processor.pose_to_transform(dx_rel, dy_rel, dtheta_ekf)
-
-            icp_result = icp_method.register(current_pcd, prev_pcd, init_transform)
-
-            dx_icp, dy_icp, dtheta_icp = processor.transform_to_pose(icp_result['transformation'])
-
-            cos_curr = math.cos(current_icp_pose[2])
-            sin_curr = math.sin(current_icp_pose[2])
-            current_icp_pose[0] += dx_icp * cos_curr - dy_icp * sin_curr
-            current_icp_pose[1] += dx_icp * sin_curr + dy_icp * cos_curr
-            current_icp_pose[2] += dtheta_icp
+            current_icp_pose[0] += dx_ekf
+            current_icp_pose[1] += dy_ekf
+            current_icp_pose[2] += dtheta_ekf
             current_icp_pose[2] = math.atan2(math.sin(current_icp_pose[2]), math.cos(current_icp_pose[2]))
 
-            trajectory.append([current_icp_pose[0], current_icp_pose[1], current_icp_pose[2]])
+            dist_from_kf = math.sqrt((current_icp_pose[0] - last_kf_pose[0])**2 +
+                                      (current_icp_pose[1] - last_kf_pose[1])**2)
+            angle_from_kf = abs(math.atan2(
+                math.sin(current_icp_pose[2] - last_kf_pose[2]),
+                math.cos(current_icp_pose[2] - last_kf_pose[2])))
+
+            if dist_from_kf > 0.15 or angle_from_kf > math.radians(5.0):
+                current_pcd = processor.preprocess(res['scan_ranges'], res['scan_angles'], compute_normals=False)
+
+                if len(current_pcd.points) >= 10 and len(local_map_keyframes) >= 3:
+                    local_map = self.build_local_map(list(local_map_keyframes))
+
+                    if local_map is not None and len(local_map.points) >= 50:
+                        scan_points_body = np.asarray(current_pcd.points)
+                        map_points_odom = np.asarray(local_map.points)
+
+                        if len(scan_points_body) > 300:
+                            idx = np.random.choice(len(scan_points_body), 300, replace=False)
+                            scan_points_body = scan_points_body[idx]
+
+                        try:
+                            icp_result = icp_method.register_scan_to_map(
+                                scan_points_body, map_points_odom,
+                                current_icp_pose[0], current_icp_pose[1], current_icp_pose[2]
+                            )
+
+                            if icp_result.get('success', False):
+                                corr_t = math.sqrt((icp_result['x'] - current_icp_pose[0])**2 +
+                                                   (icp_result['y'] - current_icp_pose[1])**2)
+                                corr_r = abs(math.atan2(
+                                    math.sin(icp_result['theta'] - current_icp_pose[2]),
+                                    math.cos(icp_result['theta'] - current_icp_pose[2])))
+
+                                if corr_t < 0.15 and corr_r < math.radians(2.0):
+                                    current_icp_pose = [icp_result['x'], icp_result['y'], icp_result['theta']]
+
+                            detailed_results.append({
+                                'timestamp': res['timestamp'],
+                                'x': current_icp_pose[0],
+                                'y': current_icp_pose[1],
+                                'theta': current_icp_pose[2],
+                                'fitness': icp_result.get('fitness', 0.0),
+                                'inlier_rmse': icp_result.get('inlier_rmse', 1.0),
+                                'iterations': icp_result.get('iterations', 0),
+                                'runtime_ms': icp_result.get('runtime_ms', 0.0)
+                            })
+                        except Exception as e:
+                            print(f"ICP failed: {e}")
+
+                if len(current_pcd.points) >= 10:
+                    global_pcd = self.transform_pointcloud_to_global(current_pcd, current_icp_pose)
+                    local_map_keyframes.append(global_pcd)
+                    last_kf_pose = current_icp_pose.copy()
+
+            trajectory.append([res['timestamp'], current_icp_pose[0], current_icp_pose[1], current_icp_pose[2]])
             scan_data.append({'ranges': res['scan_ranges'], 'angles': res['scan_angles']})
-
-            detailed_results.append({
-                'timestamp': res['timestamp'],
-                'x': current_icp_pose[0],
-                'y': current_icp_pose[1],
-                'theta': current_icp_pose[2],
-                'fitness': icp_result['fitness'],
-                'inlier_rmse': icp_result['inlier_rmse'],
-                'iterations': icp_result['iterations'],
-                'runtime_ms': icp_result['runtime_ms']
-            })
-
-            prev_pcd = current_pcd
             prev_ekf_pose = current_ekf_pose
 
         processor.reset_keyframe()
 
         return trajectory, detailed_results, scan_data
-
-    def reevaluate_trajectory(self, optimized_trajectory, ekf_results, icp_method, processor):
-        detailed_results = []
-        point_clouds = []
-
-        keyframe_idx = 0
-        for i, res in enumerate(ekf_results):
-            current_pose = res['ekf_pose']
-
-            if not processor.is_keyframe(current_pose):
-                continue
-
-            if keyframe_idx >= len(optimized_trajectory):
-                break
-
-            current_pcd = processor.preprocess(
-                res['scan_ranges'],
-                res['scan_angles'],
-                compute_normals=(icp_method.name in ["Point-to-Plane", "GICP"])
-            )
-
-            if len(current_pcd.points) < 10:
-                continue
-
-            point_clouds.append(current_pcd)
-            keyframe_idx += 1
-
-        for i in range(1, len(optimized_trajectory)):
-            if i >= len(point_clouds):
-                break
-
-            prev_pose = optimized_trajectory[i-1]
-            curr_pose = optimized_trajectory[i]
-
-            dx = curr_pose[0] - prev_pose[0]
-            dy = curr_pose[1] - prev_pose[1]
-            dtheta = curr_pose[2] - prev_pose[2]
-            dtheta = math.atan2(math.sin(dtheta), math.cos(dtheta))
-
-            cos_prev = math.cos(prev_pose[2])
-            sin_prev = math.sin(prev_pose[2])
-            dx_rel = dx * cos_prev + dy * sin_prev
-            dy_rel = -dx * sin_prev + dy * cos_prev
-
-            init_transform = processor.pose_to_transform(dx_rel, dy_rel, dtheta)
-            icp_result = icp_method.register(point_clouds[i], point_clouds[i-1], init_transform)
-
-            detailed_results.append({
-                'fitness': icp_result['fitness'],
-                'inlier_rmse': icp_result['inlier_rmse'],
-                'iterations': icp_result['iterations'],
-                'runtime_ms': icp_result['runtime_ms']
-            })
-
-        processor.reset_keyframe()
-        return detailed_results
-
-    def plot_loop_closure_performance(self, before_stats, after_stats, num_loops, title):
-        import matplotlib.pyplot as plt
-
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-
-        x = np.arange(2)
-        width = 0.6
-
-        ax = axes[0]
-        fitness_vals = [before_stats['avg_fitness'], after_stats['avg_fitness']]
-        colors = ['#e74c3c', '#2ecc71']
-        bars = ax.bar(x, fitness_vals, width, color=colors, edgecolor='black', linewidth=1.5)
-        ax.set_ylabel('Average Fitness', fontsize=13, fontweight='bold')
-        ax.set_title(f'Fitness Comparison ({num_loops} loops detected)', fontsize=14, fontweight='bold')
-        ax.set_xticks(x)
-        ax.set_xticklabels(['Before Loop Closure', 'After Loop Closure'], fontsize=11)
-        ax.grid(True, alpha=0.3, axis='y')
-        ax.set_ylim(min(fitness_vals) * 0.95, 1.02)
-
-        for i, (bar, val) in enumerate(zip(bars, fitness_vals)):
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                   f'{val:.4f}', ha='center', va='bottom', fontsize=11, fontweight='bold')
-
-        ax = axes[1]
-        rmse_vals = [before_stats['avg_rmse'], after_stats['avg_rmse']]
-        bars = ax.bar(x, rmse_vals, width, color=colors, edgecolor='black', linewidth=1.5)
-        ax.set_ylabel('Average RMSE [m]', fontsize=13, fontweight='bold')
-        ax.set_title(f'RMSE Comparison ({num_loops} loops detected)', fontsize=14, fontweight='bold')
-        ax.set_xticks(x)
-        ax.set_xticklabels(['Before Loop Closure', 'After Loop Closure'], fontsize=11)
-        ax.grid(True, alpha=0.3, axis='y')
-        ax.set_ylim(0, max(rmse_vals) * 1.15)
-
-        for i, (bar, val) in enumerate(zip(bars, rmse_vals)):
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(rmse_vals)*0.03,
-                   f'{val:.4f}', ha='center', va='bottom', fontsize=11, fontweight='bold')
-
-        fig.suptitle(title, fontsize=16, fontweight='bold')
-        plt.tight_layout()
-
-        return fig
 
     def run_all_methods(self):
         print(f"Running all ICP methods for {self.sequence_name}...")
@@ -290,16 +249,14 @@ class Experiment:
         ekf_results = self.run_ekf_odometry(data)
         print(f"  EKF odometry computed: {len(ekf_results)} keyframes")
 
-        processor = LidarProcessor(voxel_size=0.1, translation_threshold=0.3, rotation_threshold=0.174)
+        processor = LidarProcessor(voxel_size=0.0, translation_threshold=0.15, rotation_threshold=0.087)
 
         icp_methods = [
-            PointToPointICP(),
-            PointToPlaneICP(),
-            PointToLineICP(),
-            GICP()
+            PointToPointICP()
         ]
 
         all_trajectories = {}
+        all_trajectories_with_time = {}
         all_detailed_results = {}
         all_scan_data = {}
         method_summaries = {}
@@ -308,6 +265,8 @@ class Experiment:
         ekf_traj = [[r['ekf_pose'][0], r['ekf_pose'][1], r['ekf_pose'][2]] for r in ekf_results]
         all_trajectories['Wheel'] = wheel_traj
         all_trajectories['EKF'] = ekf_traj
+
+        trajectory_poses = {}
 
         for icp_method in icp_methods:
             print(f"  Processing {icp_method.name}...")
@@ -318,7 +277,10 @@ class Experiment:
                 print(f"    Warning: No trajectory generated for {icp_method.name}")
                 continue
 
-            all_trajectories[icp_method.name] = trajectory
+            traj_poses = [[t[1], t[2], t[3]] for t in trajectory]
+            all_trajectories[icp_method.name] = traj_poses
+            all_trajectories_with_time[icp_method.name] = trajectory
+            trajectory_poses[icp_method.name] = traj_poses
             all_detailed_results[icp_method.name] = detailed_results
             all_scan_data[icp_method.name] = scan_data
 
@@ -328,11 +290,11 @@ class Experiment:
             iterations = [r['iterations'] for r in detailed_results]
 
             method_summaries[icp_method.name] = {
-                'num_keyframes': len(trajectory),
+                'num_keyframes': len(traj_poses),
                 'final_pose': {
-                    'x': trajectory[-1][0],
-                    'y': trajectory[-1][1],
-                    'theta_deg': math.degrees(trajectory[-1][2])
+                    'x': traj_poses[-1][0],
+                    'y': traj_poses[-1][1],
+                    'theta_deg': math.degrees(traj_poses[-1][2])
                 },
                 'avg_runtime_ms': np.mean(runtimes),
                 'std_runtime_ms': np.std(runtimes),
@@ -343,189 +305,134 @@ class Experiment:
                 'std_rmse': np.std(rmse_scores),
                 'avg_iterations': compute_convergence_rate(detailed_results),
                 'consistency_score': compute_consistency_score(detailed_results),
-                'trajectory_length_m': compute_trajectory_drift(trajectory)
+                'trajectory_length_m': compute_trajectory_drift(traj_poses)
             }
 
-            print(f"    {icp_method.name}: {len(trajectory)} poses, "
+            print(f"    {icp_method.name}: {len(trajectory)} total poses, "
                   f"avg_fitness={np.mean(fitness_scores):.3f}, "
-                  f"avg_runtime={np.mean(runtimes):.1f}ms")
+                  f"avg_runtime={np.mean(runtimes):.1f}ms, "
+                  f"final_theta={math.degrees(traj_poses[-1][2]):.2f}deg")
 
-        ranked_methods, rankings = rank_methods(method_summaries)
-        best_method_name = ranked_methods[0][0]
+        best_method_name = list(method_summaries.keys())[0]
+        print(f"\n  Using method: {best_method_name}")
 
-        print(f"\n  Ranking (best to worst):")
-        for i, (method, scores) in enumerate(ranked_methods):
-            print(f"    {i+1}. {method}: score={scores['total_score']:.3f}")
-
-        print(f"\n  Best method: {best_method_name}")
-
-        fig = plot_all_trajectories(all_trajectories, f'{self.sequence_name}: All Methods Comparison')
+        print(f"  Generating trajectory comparison plot...")
+        fig = plot_all_trajectories(all_trajectories, f'{self.sequence_name}: Trajectory Comparison')
         save_figure(fig, self.seq_dir / 'all_trajectories.png')
 
-        fig = plot_icp_performance(method_summaries, all_detailed_results,
-                                   f'{self.sequence_name}: ICP Performance')
-        save_figure(fig, self.seq_dir / 'icp_performance.png')
-
-        runtime_data = {m: [r['runtime_ms'] for r in all_detailed_results[m]] for m in all_detailed_results.keys()}
-        fig = plot_runtime_boxplot(runtime_data, f'{self.sequence_name}: Runtime Distribution')
-        save_figure(fig, self.seq_dir / 'runtime_boxplot.png')
-
+        print(f"  Saving detailed results to CSV...")
         for method_name, details in all_detailed_results.items():
             save_csv(details, self.csv_dir / f'{method_name.lower().replace(" ", "_")}_data.csv')
 
+        print(f"  Generating map with scans...")
         for method_name in all_scan_data.keys():
-            print(f"  Generating map for {method_name}...")
             fig = plot_map_with_scans(
                 all_trajectories[method_name],
                 all_scan_data[method_name],
                 f'{self.sequence_name}: {method_name} Map',
-                downsample=3
+                downsample=5
             )
             save_figure(fig, self.seq_dir / f'map_{method_name.lower().replace(" ", "_").replace("-", "_")}.png')
+
+        print(f"  Generating combined time series plot...")
+        import matplotlib.pyplot as plt
+
+        wheel_traj_ts = np.array([[r['timestamp'], r['wheel_pose'][0], r['wheel_pose'][1], r['wheel_pose'][2]] for r in ekf_results])
+        ekf_traj_ts = np.array([[r['timestamp'], r['ekf_pose'][0], r['ekf_pose'][1], r['ekf_pose'][2]] for r in ekf_results])
+
+        fig, axes = plt.subplots(3, 1, figsize=(14, 12))
+        fig.suptitle(f'{self.sequence_name}: Time Series Comparison', fontsize=16, fontweight='bold')
+
+        colors = {
+            'Wheel': '#1f77b4',
+            'EKF': '#d62728',
+            'Point-to-Point': '#2ca02c'
+        }
+
+        t0 = ekf_traj_ts[0, 0]
+
+        axes[0].plot(wheel_traj_ts[:, 0] - t0, wheel_traj_ts[:, 1], '-', color=colors['Wheel'], label='Wheel Odometry', linewidth=1.5, alpha=0.8)
+        axes[0].plot(ekf_traj_ts[:, 0] - t0, ekf_traj_ts[:, 1], '-', color=colors['EKF'], label='EKF', linewidth=1.5, alpha=0.9)
+
+        for method_name in all_trajectories_with_time.keys():
+            icp_traj = np.array(all_trajectories_with_time[method_name])
+            axes[0].plot(icp_traj[:, 0] - t0, icp_traj[:, 1], '-', color=colors[method_name], label=method_name, linewidth=1.5, alpha=0.8)
+
+        axes[0].set_ylabel('X (m)', fontsize=13, fontweight='bold')
+        axes[0].grid(True, alpha=0.3)
+        axes[0].legend(loc='best', fontsize=10)
+
+        axes[1].plot(wheel_traj_ts[:, 0] - t0, wheel_traj_ts[:, 2], '-', color=colors['Wheel'], label='Wheel Odometry', linewidth=1.5, alpha=0.8)
+        axes[1].plot(ekf_traj_ts[:, 0] - t0, ekf_traj_ts[:, 2], '-', color=colors['EKF'], label='EKF', linewidth=1.5, alpha=0.9)
+
+        for method_name in all_trajectories_with_time.keys():
+            icp_traj = np.array(all_trajectories_with_time[method_name])
+            axes[1].plot(icp_traj[:, 0] - t0, icp_traj[:, 2], '-', color=colors[method_name], label=method_name, linewidth=1.5, alpha=0.8)
+
+        axes[1].set_ylabel('Y (m)', fontsize=13, fontweight='bold')
+        axes[1].grid(True, alpha=0.3)
+        axes[1].legend(loc='best', fontsize=10)
+
+        axes[2].plot(wheel_traj_ts[:, 0] - t0, np.degrees(wheel_traj_ts[:, 3]), '-', color=colors['Wheel'], label='Wheel Odometry', linewidth=1.5, alpha=0.8)
+        axes[2].plot(ekf_traj_ts[:, 0] - t0, np.degrees(ekf_traj_ts[:, 3]), '-', color=colors['EKF'], label='EKF', linewidth=1.5, alpha=0.9)
+
+        for method_name in all_trajectories_with_time.keys():
+            icp_traj = np.array(all_trajectories_with_time[method_name])
+            axes[2].plot(icp_traj[:, 0] - t0, np.degrees(icp_traj[:, 3]), '-', color=colors[method_name], label=method_name, linewidth=1.5, alpha=0.8)
+
+        axes[2].set_ylabel('Theta (deg)', fontsize=13, fontweight='bold')
+        axes[2].set_xlabel('Time (s)', fontsize=13, fontweight='bold')
+        axes[2].grid(True, alpha=0.3)
+        axes[2].legend(loc='best', fontsize=10)
+
+        plt.tight_layout()
+        save_figure(fig, self.seq_dir / 'time_series.png')
+
+        print(f"  Generating ICP performance analysis...")
+        for method_name in all_detailed_results.keys():
+            fig, axes = plt.subplots(3, 1, figsize=(14, 10))
+            fig.suptitle(f'{self.sequence_name}: ICP Performance', fontsize=16, fontweight='bold')
+
+            details = all_detailed_results[method_name]
+            timestamps = np.array([d['timestamp'] for d in details])
+            fitness = np.array([d['fitness'] for d in details])
+            rmse = np.array([d['inlier_rmse'] for d in details])
+            runtime = np.array([d['runtime_ms'] for d in details])
+
+            t0 = timestamps[0]
+
+            axes[0].plot(timestamps - t0, fitness, 'o-', color=colors[method_name], linewidth=2, markersize=4)
+            axes[0].set_ylabel('Fitness Score', fontsize=13, fontweight='bold')
+            axes[0].set_title('ICP Fitness at Keyframes', fontsize=12, fontweight='bold')
+            axes[0].grid(True, alpha=0.3)
+
+            fitness_min = max(0.0, np.min(fitness) - 0.02)
+            fitness_max = min(1.0, np.max(fitness) + 0.02)
+            axes[0].set_ylim([fitness_min, fitness_max])
+
+            axes[1].plot(timestamps - t0, rmse, 'o-', color=colors[method_name], linewidth=2, markersize=4)
+            axes[1].set_ylabel('RMSE [m]', fontsize=13, fontweight='bold')
+            axes[1].set_title('ICP RMSE at Keyframes', fontsize=12, fontweight='bold')
+            axes[1].grid(True, alpha=0.3)
+
+            axes[2].plot(timestamps - t0, runtime, 'o-', color=colors[method_name], linewidth=2, markersize=4)
+            axes[2].set_ylabel('Runtime [ms]', fontsize=13, fontweight='bold')
+            axes[2].set_xlabel('Time [s]', fontsize=13, fontweight='bold')
+            axes[2].set_title('ICP Runtime at Keyframes', fontsize=12, fontweight='bold')
+            axes[2].grid(True, alpha=0.3)
+
+            plt.tight_layout()
+            save_figure(fig, self.seq_dir / 'icp_performance.png')
 
         summary = {
             'sequence': self.sequence_name,
             'methods': method_summaries,
-            'rankings': rankings,
             'best_method': best_method_name
         }
 
-        save_json(summary, self.json_dir / 'all_methods_summary.json')
+        save_json(summary, self.json_dir / 'summary.json')
 
-        return summary, best_method_name, all_trajectories[best_method_name], all_scan_data[best_method_name], ekf_results, processor, all_detailed_results[best_method_name]
-
-    def run_loop_closure(self, best_method_name, best_trajectory, best_scan_data, ekf_results, processor, detailed_results):
-        print(f"\nRunning loop closure with {best_method_name}...")
-
-        fitness_before = np.mean([r['fitness'] for r in detailed_results])
-        rmse_before = np.mean([r['inlier_rmse'] for r in detailed_results])
-
-        icp_methods_map = {
-            'Point-to-Point': PointToPointICP(),
-            'Point-to-Plane': PointToPlaneICP(),
-            'Point-to-Line': PointToLineICP(),
-            'GICP': GICP()
-        }
-
-        best_icp_method = icp_methods_map[best_method_name]
-
-        loop_closure = LoopClosure(search_radius=2.5, temporal_threshold=30.0,
-                                   fitness_threshold=0.65, rmse_threshold=0.12)
-
-        keyframe_idx = 0
-        for i, res in enumerate(ekf_results):
-            current_pose = res['ekf_pose']
-
-            if not processor.is_keyframe(current_pose):
-                continue
-
-            if keyframe_idx >= len(best_trajectory):
-                break
-
-            current_pcd = processor.preprocess(
-                res['scan_ranges'],
-                res['scan_angles'],
-                compute_normals=(best_method_name in ["Point-to-Plane", "Point-to-Line", "GICP"])
-            )
-
-            if len(current_pcd.points) < 10:
-                continue
-
-            loop_closure.add_keyframe(res['timestamp'], best_trajectory[keyframe_idx], current_pcd)
-
-            if len(loop_closure.keyframes) >= 10:
-                new_loops = loop_closure.detect_loops(best_icp_method)
-                if new_loops:
-                    print(f"  Detected {len(new_loops)} new loop(s)")
-
-            keyframe_idx += 1
-
-        loop_info = loop_closure.get_loop_info()
-        print(f"  Total loops detected: {loop_info['num_loops']}")
-
-        if loop_info['num_loops'] > 0:
-            optimized_trajectory = loop_closure.optimize_pose_graph(best_trajectory)
-
-            fig = plot_loop_closure_comparison(
-                best_trajectory, optimized_trajectory, loop_info['loops'],
-                scan_data=best_scan_data,
-                title=f'{self.sequence_name}: Loop Closure Effect',
-                downsample=5
-            )
-            save_figure(fig, self.seq_dir / 'loop_closure_comparison.png')
-
-            loop_closure_results = []
-            for i, pose in enumerate(optimized_trajectory):
-                loop_closure_results.append({
-                    'keyframe_idx': i,
-                    'x': pose[0],
-                    'y': pose[1],
-                    'theta': pose[2]
-                })
-
-            save_csv(loop_closure_results, self.csv_dir / 'loop_closure_optimized.csv')
-
-            loop_summary = {
-                'num_keyframes': loop_info['num_keyframes'],
-                'num_loops': loop_info['num_loops'],
-                'loops': loop_info['loops']
-            }
-            save_json(loop_summary, self.json_dir / 'loop_closure_summary.json')
-
-            print(f"  Loop closure completed successfully!")
-            print(f"  Re-evaluating trajectory after loop closure...")
-
-            detailed_results_after = self.reevaluate_trajectory(
-                optimized_trajectory, ekf_results, best_icp_method, processor
-            )
-
-            if detailed_results_after:
-                fitness_after = np.mean([r['fitness'] for r in detailed_results_after])
-                rmse_after = np.mean([r['inlier_rmse'] for r in detailed_results_after])
-
-                before_stats = {
-                    'avg_fitness': fitness_before,
-                    'avg_rmse': rmse_before
-                }
-                after_stats = {
-                    'avg_fitness': fitness_after,
-                    'avg_rmse': rmse_after
-                }
-
-                fig = self.plot_loop_closure_performance(
-                    before_stats, after_stats, loop_info['num_loops'],
-                    f'{self.sequence_name}: Loop Closure Performance Impact'
-                )
-                save_figure(fig, self.seq_dir / 'loop_closure_performance.png')
-                print(f"  Loop closure performance comparison saved!")
-
-                print(f"  Before - Fitness: {fitness_before:.4f}, RMSE: {rmse_before:.4f}m")
-                print(f"  After  - Fitness: {fitness_after:.4f}, RMSE: {rmse_after:.4f}m")
-            else:
-                fitness_after = fitness_before
-                rmse_after = rmse_before
-
-            loop_stats = {
-                'num_loops': loop_info['num_loops'],
-                'fitness_before': fitness_before,
-                'fitness_after': fitness_after,
-                'rmse_before': rmse_before,
-                'rmse_after': rmse_after
-            }
-        else:
-            print(f"  No loops detected (trajectory may not form a loop)")
-
-            loop_stats = {
-                'num_loops': 0,
-                'fitness_before': fitness_before,
-                'fitness_after': fitness_before,
-                'rmse_before': rmse_before,
-                'rmse_after': rmse_before
-            }
-
-        processor.reset_keyframe()
-        return loop_stats
-
+        return summary, best_method_name, trajectory_poses[best_method_name], all_scan_data[best_method_name], ekf_results, processor, all_detailed_results[best_method_name]
 
 def main():
     base_path = Path(__file__).parent.parent
@@ -539,7 +446,6 @@ def main():
     ]
 
     all_results = {}
-    loop_analysis_data = {}
 
     for bag_name, seq_name in sequences:
         bag_path = str(dataset_path / bag_name)
@@ -559,27 +465,9 @@ def main():
             summary, best_method, best_traj, best_scan_data, ekf_results, processor, detailed_results = result
             all_results[seq_name] = summary
 
-            loop_stats = exp.run_loop_closure(best_method, best_traj, best_scan_data, ekf_results, processor, detailed_results)
-
-            # Collect data for loop closure analysis
-            loop_analysis_data[seq_name] = {
-                'best_method': best_method,
-                'num_loops': loop_stats['num_loops'],
-                'fitness_before': loop_stats['fitness_before'],
-                'fitness_after': loop_stats['fitness_after'],
-                'rmse_before': loop_stats['rmse_before'],
-                'rmse_after': loop_stats['rmse_after']
-            }
-
     if all_results:
         output_json = output_path / 'figures' / 'all_sequences_results.json'
         save_json(all_results, output_json)
-
-    # Generate loop closure analysis plot
-    if loop_analysis_data:
-        fig = plot_loop_closure_analysis(loop_analysis_data, 'Loop Closure Impact Analysis')
-        save_figure(fig, output_path / 'figures' / 'loop_closure_analysis.png')
-        print("\n  Loop closure analysis plot saved!")
 
     print("\n" + "="*60)
     print("All experiments completed!")

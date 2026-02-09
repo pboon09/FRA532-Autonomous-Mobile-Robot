@@ -1,0 +1,24 @@
+{
+  "sequence": "seq00",
+  "methods": {
+    "Point-to-Point": {
+      "num_keyframes": 10504,
+      "final_pose": {
+        "x": 1.346934463146093,
+        "y": -0.021770191898501434,
+        "theta_deg": 6.791087198545119
+      },
+      "avg_runtime_ms": 1.9371244642469618,
+      "std_runtime_ms": 0.7996244302833252,
+      "total_runtime_s": 0.7496671676635742,
+      "avg_fitness": 0.9957034664760408,
+      "std_fitness": 0.011921422711683371,
+      "avg_rmse": 0.04113681547536174,
+      "std_rmse": 0.018302230236324487,
+      "avg_iterations": 14.069767441860465,
+      "consistency_score": 0.9848881735259961,
+      "trajectory_length_m": 70.27651650391925
+    }
+  },
+  "best_method": "Point-to-Point"
+}

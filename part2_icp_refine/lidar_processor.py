@@ -11,6 +11,17 @@ class LidarProcessor:
         self.last_keyframe_pose = None
 
     def scan_to_pointcloud(self, ranges, angles):
+        ranges = np.array(ranges, dtype=np.float64)
+        angles = np.array(angles, dtype=np.float64)
+
+        valid = (np.isfinite(ranges) & (ranges > 0.12) & (ranges < 30.0))
+        ranges = ranges[valid]
+        angles = angles[valid]
+
+        if len(ranges) == 0:
+            pcd = o3d.geometry.PointCloud()
+            return pcd
+
         x = ranges * np.cos(angles)
         y = ranges * np.sin(angles)
         z = np.zeros_like(x)
@@ -23,7 +34,7 @@ class LidarProcessor:
         return pcd
 
     def downsample(self, pcd):
-        if len(pcd.points) == 0:
+        if len(pcd.points) == 0 or self.voxel_size <= 0:
             return pcd
 
         downsampled = pcd.voxel_down_sample(voxel_size=self.voxel_size)
@@ -77,9 +88,8 @@ class LidarProcessor:
         if len(pcd.points) == 0:
             return pcd
 
-        pcd = self.downsample(pcd)
-
-        pcd = self.remove_outliers(pcd)
+        if self.voxel_size > 0:
+            pcd = self.downsample(pcd)
 
         if compute_normals and len(pcd.points) >= 3:
             pcd = self.estimate_normals(pcd)
