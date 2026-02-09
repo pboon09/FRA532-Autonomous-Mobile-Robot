@@ -11,3 +11,4 @@ turtle_ekf_node:
     imu_theta_covariance: 0.1
 
     use_imu_orientation: true
+    publish_tf: true

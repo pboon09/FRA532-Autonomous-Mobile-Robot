@@ -57,6 +57,7 @@ private:
     double imu_theta_cov_;
 
     bool use_imu_orientation_;
+    bool publish_tf_;
 
     rclcpp::Time last_odom_time_;
     bool initialized_;

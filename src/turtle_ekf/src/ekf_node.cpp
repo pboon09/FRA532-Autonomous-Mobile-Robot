@@ -29,6 +29,10 @@ EKFNode::EKFNode()
 
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+    RCLCPP_INFO(this->get_logger(), "EKF Odometry initialized | IMU: %s | TF: %s",
+                use_imu_orientation_ ? "true" : "false",
+                publish_tf_ ? "true" : "false");
 }
 
 void EKFNode::loadParameters()
@@ -46,6 +50,7 @@ void EKFNode::loadParameters()
 
     this->declare_parameter("imu_theta_covariance", 0.1);
     this->declare_parameter("use_imu_orientation", true);
+    this->declare_parameter("publish_tf", true);
 
     odom_frame_ = this->get_parameter("odom_frame").as_string();
     base_frame_ = this->get_parameter("base_frame").as_string();
@@ -55,6 +60,7 @@ void EKFNode::loadParameters()
     initial_covariance_ = this->get_parameter("initial_estimate_covariance").as_double_array();
     imu_theta_cov_ = this->get_parameter("imu_theta_covariance").as_double();
     use_imu_orientation_ = this->get_parameter("use_imu_orientation").as_bool();
+    publish_tf_ = this->get_parameter("publish_tf").as_bool();
 }
 
 void EKFNode::initializeEKF()
@@ -102,7 +108,9 @@ void EKFNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
     latest_omega_ = omega;
 
     publishOdometry();
-    broadcastTransform();
+    if (publish_tf_) {
+        broadcastTransform();
+    }
 }
 
 void EKFNode::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
