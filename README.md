@@ -26,6 +26,7 @@
       - [1.3.2 Filter Validation](#132-filter-validation)
       - [1.3.3 Trajectory Comparison](#133-trajectory-comparison)
       - [1.3.4 Time Series Analysis](#134-time-series-analysis)
+      - [1.3.5 Overall Performance Analysis](#135-overall-performance-analysis)
   - [Part 2: ICP Odometry Refinement](#part-2-icp-odometry-refinement)
     - [2.1 ICP Problem Formulation](#21-icp-problem-formulation)
     - [2.2 ICP Algorithm](#22-icp-algorithm)
@@ -573,6 +574,38 @@ Near-zero mean confirms the filter is unbiased. Small std confirms the filter is
 **Sequence 02:**
 
 ![seq02 time series](part1_ekf_odom/figures/seq02/time_series.png)
+
+#### 1.3.5 Overall Performance Analysis
+
+| Sequence | Description | Heading Deviation (deg) | Innovation Mean (deg) | Innovation Std (deg) |
+|----------|-------------|-------------------------|-----------------------|----------------------|
+| **seq00** | Empty Hallway | **0.082** | **-0.001** | 0.113 |
+| **seq01** | Sharp Turns | 0.143 | -0.018 | 0.196 |
+| **seq02** | Smooth Motion | 0.087 | -0.003 | **0.119** |
+
+**Key Findings:**
+
+1. **Heading Accuracy (0.082-0.143°)**: All sequences achieve sub-0.15° heading deviation from IMU across all environments.
+
+2. **Unbiased Estimation (-0.018° to -0.001°)**: Innovation mean near zero confirms the filter is unbiased and properly calibrated.
+
+3. **Low Uncertainty (0.113-0.196°)**: Innovation standard deviation under 0.2° indicates consistent filter performance with tight confidence bounds.
+
+4. **EKF Reduces Wheel Drift**: Heading deviation drops from 5-20° (wheel odometry) to <0.15° (EKF) through IMU fusion.
+
+**Performance Trends:**
+
+- **Sharp turns challenge the filter**: Higher innovation std (0.196°) and deviation (0.143°) indicate increased uncertainty during aggressive maneuvers.
+
+- **Empty hallways achieve best accuracy**: Minimal heading deviation (0.082°) and innovation mean (-0.001°) show optimal filter performance in feature-sparse environments.
+
+- **Smooth motion provides stability**: Low innovation std (0.119°) demonstrates predictable filter behavior with gradual motion profiles.
+
+- **Filter remains unbiased**: All innovation means within ±0.02° confirm no systematic errors across diverse scenarios.
+
+**Conclusion:**
+
+The EKF odometry fusion demonstrates accurate and unbiased heading estimation across diverse environments and motion patterns. The results validate that sensor fusion with IMU measurements provides reliable heading correction, reducing heading deviation from 5-20° (wheel odometry) to under 0.15° (EKF) while maintaining low uncertainty bounds.
 
 ---
 
