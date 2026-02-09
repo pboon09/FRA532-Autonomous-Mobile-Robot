@@ -23,11 +23,11 @@ class TurtlePath(Node):
         self.slam_path.header.frame_id = 'map'
 
         self.wheel_odom_sub = self.create_subscription(
-            Odometry, '/wheel_odom', self.wheel_odom_callback, 10)
+            Odometry, '/odometry/wheel_odom', self.wheel_odom_callback, 10)
         self.ekf_sub = self.create_subscription(
             Odometry, '/odometry/filtered', self.ekf_callback, 10)
         self.icp_sub = self.create_subscription(
-            Odometry, '/odom_icp', self.icp_callback, 10)
+            Odometry, '/odometry/icp_keyframes', self.icp_callback, 10)
         self.slam_pose_sub = self.create_subscription(
             PoseWithCovarianceStamped, '/pose', self.slam_pose_callback, 10)
 
