@@ -5,6 +5,7 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
+        - /Wheel Odometry1/Shape1
         - /EKF1/Shape1
         - /ICP1/Shape1
         - /LaserScan1/Topic1
@@ -189,7 +190,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /wheel_odom
+        Value: /odometry/wheel_odom
       Value: true
     - Angle Tolerance: 0.10000000149011612
       Class: rviz_default_plugins/Odometry
@@ -267,7 +268,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /odom_icp
+        Value: /odometry/icp_keyframes
       Value: true
     - Alpha: 1
       Buffer Length: 1
@@ -368,9 +369,9 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 2648
+      Max Intensity: 3265
       Min Color: 0; 0; 0
-      Min Intensity: 105
+      Min Intensity: 106
       Name: LaserScan
       Position Transformer: XYZ
       Selectable: true
@@ -465,7 +466,7 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 167.09938049316406
+      Scale: 158.26004028320312
       Target Frame: base_footprint
       Value: TopDownOrtho (rviz_default_plugins)
       X: -0.020400291308760643
