@@ -46,7 +46,7 @@ class ICPMapper(Node):
         self.scan_sub = self.create_subscription(
             LaserScan, '/scan', self.scan_callback, qos_profile_sensor_data)
         self.odom_sub = self.create_subscription(
-            Odometry, '/odom_icp', self.odom_callback, 10)
+            Odometry, '/odometry/icp', self.odom_callback, 10)
 
         self.map_pub = self.create_publisher(OccupancyGrid, '/map', 10)
         self.map_timer = self.create_timer(self.map_update_interval, self.publish_map)
@@ -63,8 +63,8 @@ class ICPMapper(Node):
         self.update_map(msg)
 
     def world_to_map(self, x, y):
-        map_x = int(x / self.map_resolution)
-        map_y = int(y / self.map_resolution)
+        map_x = int(np.floor(x / self.map_resolution))
+        map_y = int(np.floor(y / self.map_resolution))
         return map_x, map_y
 
     def update_map(self, scan):
