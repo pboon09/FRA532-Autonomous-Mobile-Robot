@@ -3,22 +3,22 @@
     "sequence": "seq00",
     "methods": {
       "Point-to-Point": {
-        "num_keyframes": 10504,
+        "num_keyframes": 195,
         "final_pose": {
-          "x": 1.346934463146093,
-          "y": -0.021770191898501434,
-          "theta_deg": 6.791087198545119
+          "x": 1.6886596851181332,
+          "y": -0.11080780336583948,
+          "theta_deg": 5.8515290532379325
         },
-        "avg_runtime_ms": 1.9371244642469618,
-        "std_runtime_ms": 0.7996244302833252,
-        "total_runtime_s": 0.7496671676635742,
-        "avg_fitness": 0.9957034664760408,
-        "std_fitness": 0.011921422711683371,
-        "avg_rmse": 0.04113681547536174,
-        "std_rmse": 0.018302230236324487,
-        "avg_iterations": 14.069767441860465,
-        "consistency_score": 0.9848881735259961,
-        "trajectory_length_m": 70.27651650391925
+        "avg_runtime_ms": 2.024911344051361,
+        "std_runtime_ms": 0.8615146818656912,
+        "total_runtime_s": 0.38878297805786133,
+        "avg_fitness": 0.9862764073969122,
+        "std_fitness": 0.07280616863905207,
+        "avg_rmse": 0.06039681270598778,
+        "std_rmse": 0.0718350971826398,
+        "avg_iterations": 14.723958333333334,
+        "consistency_score": 0.9276793670891541,
+        "trajectory_length_m": 53.73544131935966
       }
     },
     "best_method": "Point-to-Point"
@@ -27,22 +27,22 @@
     "sequence": "seq01",
     "methods": {
       "Point-to-Point": {
-        "num_keyframes": 7854,
+        "num_keyframes": 226,
         "final_pose": {
-          "x": 1.8534419506237603,
-          "y": -0.5834990482172023,
-          "theta_deg": 2.081445450196282
+          "x": 1.773443383066378,
+          "y": 0.20719265063971998,
+          "theta_deg": 0.5535514574876762
         },
-        "avg_runtime_ms": 2.150432395500583,
-        "std_runtime_ms": 3.4403401601078927,
-        "total_runtime_s": 0.9440398216247559,
-        "avg_fitness": 0.9965925866636903,
-        "std_fitness": 0.00918120152369044,
-        "avg_rmse": 0.034789785025386426,
-        "std_rmse": 0.013893175817602771,
-        "avg_iterations": 13.548974943052391,
-        "consistency_score": 0.9884628113293534,
-        "trajectory_length_m": 57.74068410025932
+        "avg_runtime_ms": 2.266969381426482,
+        "std_runtime_ms": 1.3471464629616121,
+        "total_runtime_s": 0.5055341720581055,
+        "avg_fitness": 0.9913707491645272,
+        "std_fitness": 0.018339031196112528,
+        "avg_rmse": 0.04664555711530371,
+        "std_rmse": 0.020912564375042467,
+        "avg_iterations": 15.466367713004484,
+        "consistency_score": 0.9803742022144225,
+        "trajectory_length_m": 55.71730565098356
       }
     },
     "best_method": "Point-to-Point"
@@ -51,22 +51,22 @@
     "sequence": "seq02",
     "methods": {
       "Point-to-Point": {
-        "num_keyframes": 11975,
+        "num_keyframes": 217,
         "final_pose": {
-          "x": 4.739938456506573,
-          "y": 0.8461972829322153,
-          "theta_deg": 15.66328797580609
+          "x": 5.7901742614915905,
+          "y": 0.9642179147034824,
+          "theta_deg": 12.288306505257525
         },
-        "avg_runtime_ms": 2.086127878061343,
-        "std_runtime_ms": 0.8568989341644466,
-        "total_runtime_s": 0.9032933712005615,
-        "avg_fitness": 0.9967465945188011,
-        "std_fitness": 0.007573964851681401,
-        "avg_rmse": 0.036355315454081216,
-        "std_rmse": 0.013669817725103353,
-        "avg_iterations": 15.057736720554272,
-        "consistency_score": 0.9893781087116076,
-        "trajectory_length_m": 72.41018638650826
+        "avg_runtime_ms": 2.3851205255383645,
+        "std_runtime_ms": 0.9371880802249138,
+        "total_runtime_s": 0.51041579246521,
+        "avg_fitness": 0.990389975978642,
+        "std_fitness": 0.018339748478324192,
+        "avg_rmse": 0.04826519712490572,
+        "std_rmse": 0.01816068890695043,
+        "avg_iterations": 16.962616822429908,
+        "consistency_score": 0.9817497813073627,
+        "trajectory_length_m": 58.30709146757094
       }
     },
     "best_method": "Point-to-Point"

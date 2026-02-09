@@ -2,22 +2,22 @@
   "sequence": "seq01",
   "methods": {
     "Point-to-Point": {
-      "num_keyframes": 7854,
+      "num_keyframes": 226,
       "final_pose": {
-        "x": 1.8534419506237603,
-        "y": -0.5834990482172023,
-        "theta_deg": 2.081445450196282
+        "x": 1.773443383066378,
+        "y": 0.20719265063971998,
+        "theta_deg": 0.5535514574876762
       },
-      "avg_runtime_ms": 2.150432395500583,
-      "std_runtime_ms": 3.4403401601078927,
-      "total_runtime_s": 0.9440398216247559,
-      "avg_fitness": 0.9965925866636903,
-      "std_fitness": 0.00918120152369044,
-      "avg_rmse": 0.034789785025386426,
-      "std_rmse": 0.013893175817602771,
-      "avg_iterations": 13.548974943052391,
-      "consistency_score": 0.9884628113293534,
-      "trajectory_length_m": 57.74068410025932
+      "avg_runtime_ms": 2.266969381426482,
+      "std_runtime_ms": 1.3471464629616121,
+      "total_runtime_s": 0.5055341720581055,
+      "avg_fitness": 0.9913707491645272,
+      "std_fitness": 0.018339031196112528,
+      "avg_rmse": 0.04664555711530371,
+      "std_rmse": 0.020912564375042467,
+      "avg_iterations": 15.466367713004484,
+      "consistency_score": 0.9803742022144225,
+      "trajectory_length_m": 55.71730565098356
     }
   },
   "best_method": "Point-to-Point"

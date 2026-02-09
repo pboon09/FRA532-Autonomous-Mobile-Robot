@@ -140,12 +140,13 @@ class Experiment:
         trajectory = []
         detailed_results = []
         scan_data = []
-
         local_map_keyframes = deque(maxlen=self.local_map_size)
-
         prev_ekf_pose = None
         current_icp_pose = [0.0, 0.0, 0.0]
         last_kf_pose = [0.0, 0.0, 0.0]
+        accumulated_dx = 0.0
+        accumulated_dy = 0.0
+        accumulated_dtheta = 0.0
 
         for i, res in enumerate(ekf_results):
             current_ekf_pose = res['ekf_pose']
@@ -154,7 +155,6 @@ class Experiment:
                 prev_ekf_pose = current_ekf_pose
                 trajectory.append([res['timestamp'], 0.0, 0.0, 0.0])
                 scan_data.append({'ranges': res['scan_ranges'], 'angles': res['scan_angles']})
-
                 current_pcd = processor.preprocess(res['scan_ranges'], res['scan_angles'], compute_normals=False)
                 if len(current_pcd.points) >= 10:
                     global_pcd = self.transform_pointcloud_to_global(current_pcd, current_icp_pose)
@@ -167,18 +167,20 @@ class Experiment:
             dtheta_ekf = current_ekf_pose[2] - prev_ekf_pose[2]
             dtheta_ekf = math.atan2(math.sin(dtheta_ekf), math.cos(dtheta_ekf))
 
-            current_icp_pose[0] += dx_ekf
-            current_icp_pose[1] += dy_ekf
-            current_icp_pose[2] += dtheta_ekf
-            current_icp_pose[2] = math.atan2(math.sin(current_icp_pose[2]), math.cos(current_icp_pose[2]))
+            accumulated_dx += dx_ekf
+            accumulated_dy += dy_ekf
+            accumulated_dtheta += dtheta_ekf
+            accumulated_dtheta = math.atan2(math.sin(accumulated_dtheta), math.cos(accumulated_dtheta))
 
-            dist_from_kf = math.sqrt((current_icp_pose[0] - last_kf_pose[0])**2 +
-                                      (current_icp_pose[1] - last_kf_pose[1])**2)
-            angle_from_kf = abs(math.atan2(
-                math.sin(current_icp_pose[2] - last_kf_pose[2]),
-                math.cos(current_icp_pose[2] - last_kf_pose[2])))
+            predicted_x = last_kf_pose[0] + accumulated_dx
+            predicted_y = last_kf_pose[1] + accumulated_dy
+            predicted_theta = last_kf_pose[2] + accumulated_dtheta
+            predicted_theta = math.atan2(math.sin(predicted_theta), math.cos(predicted_theta))
 
-            if dist_from_kf > 0.15 or angle_from_kf > math.radians(5.0):
+            dist_from_kf = math.sqrt(accumulated_dx**2 + accumulated_dy**2)
+            angle_from_kf = abs(accumulated_dtheta)
+
+            if dist_from_kf > 0.3 or angle_from_kf > math.radians(10.0):
                 current_pcd = processor.preprocess(res['scan_ranges'], res['scan_angles'], compute_normals=False)
 
                 if len(current_pcd.points) >= 10 and len(local_map_keyframes) >= 3:
@@ -195,18 +197,19 @@ class Experiment:
                         try:
                             icp_result = icp_method.register_scan_to_map(
                                 scan_points_body, map_points_odom,
-                                current_icp_pose[0], current_icp_pose[1], current_icp_pose[2]
+                                predicted_x, predicted_y, predicted_theta
                             )
 
                             if icp_result.get('success', False):
-                                corr_t = math.sqrt((icp_result['x'] - current_icp_pose[0])**2 +
-                                                   (icp_result['y'] - current_icp_pose[1])**2)
-                                corr_r = abs(math.atan2(
-                                    math.sin(icp_result['theta'] - current_icp_pose[2]),
-                                    math.cos(icp_result['theta'] - current_icp_pose[2])))
+                                corr_t = math.sqrt((icp_result['x'] - predicted_x)**2 + (icp_result['y'] - predicted_y)**2)
+                                corr_r = abs(math.atan2(math.sin(icp_result['theta'] - predicted_theta), math.cos(icp_result['theta'] - predicted_theta)))
 
-                                if corr_t < 0.15 and corr_r < math.radians(2.0):
+                                if corr_t < 0.3 and corr_r < math.radians(5.0):
                                     current_icp_pose = [icp_result['x'], icp_result['y'], icp_result['theta']]
+                                else:
+                                    current_icp_pose = [predicted_x, predicted_y, predicted_theta]
+                            else:
+                                current_icp_pose = [predicted_x, predicted_y, predicted_theta]
 
                             detailed_results.append({
                                 'timestamp': res['timestamp'],
@@ -220,14 +223,22 @@ class Experiment:
                             })
                         except Exception as e:
                             print(f"ICP failed: {e}")
+                            current_icp_pose = [predicted_x, predicted_y, predicted_theta]
+                else:
+                    current_icp_pose = [predicted_x, predicted_y, predicted_theta]
 
                 if len(current_pcd.points) >= 10:
                     global_pcd = self.transform_pointcloud_to_global(current_pcd, current_icp_pose)
                     local_map_keyframes.append(global_pcd)
                     last_kf_pose = current_icp_pose.copy()
 
-            trajectory.append([res['timestamp'], current_icp_pose[0], current_icp_pose[1], current_icp_pose[2]])
-            scan_data.append({'ranges': res['scan_ranges'], 'angles': res['scan_angles']})
+                trajectory.append([res['timestamp'], current_icp_pose[0], current_icp_pose[1], current_icp_pose[2]])
+                scan_data.append({'ranges': res['scan_ranges'], 'angles': res['scan_angles']})
+
+                accumulated_dx = 0.0
+                accumulated_dy = 0.0
+                accumulated_dtheta = 0.0
+
             prev_ekf_pose = current_ekf_pose
 
         processor.reset_keyframe()
