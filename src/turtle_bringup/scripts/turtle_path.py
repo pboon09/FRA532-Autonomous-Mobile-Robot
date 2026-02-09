@@ -16,6 +16,9 @@ class TurtlePath(Node):
         self.ekf_path = Path()
         self.ekf_path.header.frame_id = 'odom'
 
+        self.icp_path = Path()
+        self.icp_path.header.frame_id = 'odom'
+
         self.slam_path = Path()
         self.slam_path.header.frame_id = 'map'
 
@@ -23,11 +26,14 @@ class TurtlePath(Node):
             Odometry, '/wheel_odom', self.wheel_odom_callback, 10)
         self.ekf_sub = self.create_subscription(
             Odometry, '/odometry/filtered', self.ekf_callback, 10)
+        self.icp_sub = self.create_subscription(
+            Odometry, '/odom_icp', self.icp_callback, 10)
         self.slam_pose_sub = self.create_subscription(
             PoseWithCovarianceStamped, '/pose', self.slam_pose_callback, 10)
 
         self.wheel_odom_path_pub = self.create_publisher(Path, '/path/wheel_odom', 10)
         self.ekf_path_pub = self.create_publisher(Path, '/path/ekf', 10)
+        self.icp_path_pub = self.create_publisher(Path, '/path/icp', 10)
         self.slam_path_pub = self.create_publisher(Path, '/path/slam', 10)
 
     def wheel_odom_callback(self, msg):
@@ -45,6 +51,14 @@ class TurtlePath(Node):
         self.ekf_path.poses.append(pose)
         self.ekf_path.header.stamp = msg.header.stamp
         self.ekf_path_pub.publish(self.ekf_path)
+
+    def icp_callback(self, msg):
+        pose = PoseStamped()
+        pose.header = msg.header
+        pose.pose = msg.pose.pose
+        self.icp_path.poses.append(pose)
+        self.icp_path.header.stamp = msg.header.stamp
+        self.icp_path_pub.publish(self.icp_path)
 
     def slam_pose_callback(self, msg):
         pose = PoseStamped()
