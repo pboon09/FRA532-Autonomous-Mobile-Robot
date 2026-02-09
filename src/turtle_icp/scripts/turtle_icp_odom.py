@@ -3,7 +3,7 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import LaserScan, PointCloud2, PointField
+from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import TransformStamped
 import numpy as np
@@ -117,7 +117,7 @@ class LidarProcessor:
     def scan_to_pointcloud(self, ranges, angles):
         ranges = np.array(ranges, dtype=np.float64)
         angles = np.array(angles, dtype=np.float64)
-        valid = (np.isfinite(ranges) & (ranges > 0.12) & (ranges < 10.0))
+        valid = (np.isfinite(ranges) & (ranges > 0.12) & (ranges < 30.0))
         ranges, angles = ranges[valid], angles[valid]
         if len(ranges) == 0:
             return np.empty((0, 2))
@@ -155,11 +155,11 @@ class ICPOdometry(Node):
 
         self.declare_parameter('local_map_size', 15)
         self.declare_parameter('voxel_size', 0.05)
-        self.declare_parameter('keyframe_dist_thresh', 0.15)
-        self.declare_parameter('keyframe_angle_thresh', 0.087)
+        self.declare_parameter('keyframe_dist_thresh', 0.3)
+        self.declare_parameter('keyframe_angle_thresh', 0.174533)
         self.declare_parameter('max_scan_points', 300)
-        self.declare_parameter('max_translation_correction', 0.15)
-        self.declare_parameter('max_rotation_correction', 0.035)
+        self.declare_parameter('max_translation_correction', 0.3)
+        self.declare_parameter('max_rotation_correction', 0.087266)
         self.declare_parameter('publish_tf', True)
 
         self.local_map_size = self.get_parameter('local_map_size').value
@@ -197,17 +197,19 @@ class ICPOdometry(Node):
         self.icp_success_count = 0
         self.icp_reject_count = 0
         self.keyframe_count = 0
+        self.last_kf_pose = [0.0, 0.0, 0.0]
+        self.accumulated_dx = 0.0
+        self.accumulated_dy = 0.0
+        self.accumulated_dtheta = 0.0
 
         self.scan_sub = self.create_subscription(
             LaserScan, '/scan', self.scan_callback, qos_profile_sensor_data)
         self.ekf_odom_sub = self.create_subscription(
             Odometry, '/odometry/filtered', self.ekf_odom_callback, 10)
 
-        self.odom_pub = self.create_publisher(Odometry, '/odom_icp', 10)
-        self.map_pub = self.create_publisher(PointCloud2, '/icp_map', 10)
+        self.odom_pub = self.create_publisher(Odometry, '/odometry/icp', 10)
+        self.odom_keyframe_pub = self.create_publisher(Odometry, '/odometry/icp_keyframes', 10)
         self.tf_broadcaster = TransformBroadcaster(self)
-
-        self.map_publish_timer = self.create_timer(1.0, self.publish_map)
 
         self.start_time = None
         self.get_logger().info(f'ICP Odometry initialized | Map: {self.local_map_size}kf | Voxel: {self.voxel_size}m | TF: {self.publish_tf}')
@@ -224,7 +226,7 @@ class ICPOdometry(Node):
         ranges = np.array(msg.ranges)
         angles = msg.angle_min + np.arange(len(ranges)) * msg.angle_increment
         current_points = self.lidar_processor.scan_to_pointcloud(ranges, angles)
-        if len(current_points) < 30:
+        if len(current_points) < 10:
             return
 
         if not hasattr(self, 'latest_ekf_odom'):
@@ -234,10 +236,16 @@ class ICPOdometry(Node):
 
         if self.prev_ekf_x is None:
             self.prev_ekf_x, self.prev_ekf_y, self.prev_ekf_theta = ekf_x, ekf_y, ekf_theta
-            odom_points = self.transform_to_odom(current_points, self.x, self.y, self.theta)
-            self.local_map_scans.append(odom_points)
-            self.local_map_dirty = True
-            self.keyframe_count = 1
+            if len(current_points) >= 10:
+                odom_points = self.transform_to_odom(current_points, self.x, self.y, self.theta)
+                self.local_map_scans.append(odom_points)
+                self.local_map_dirty = True
+                self.keyframe_count = 1
+                self.last_kf_pose = [self.x, self.y, self.theta]
+                self.accumulated_dx = 0.0
+                self.accumulated_dy = 0.0
+                self.accumulated_dtheta = 0.0
+                self.publish_odom_and_tf(current_time, is_keyframe=True)
             return
 
         ekf_dx = ekf_x - self.prev_ekf_x
@@ -245,17 +253,25 @@ class ICPOdometry(Node):
         ekf_dtheta = np.arctan2(np.sin(ekf_theta - self.prev_ekf_theta),
                                 np.cos(ekf_theta - self.prev_ekf_theta))
 
-        self.x += ekf_dx
-        self.y += ekf_dy
-        self.theta += ekf_dtheta
+        self.accumulated_dx += ekf_dx
+        self.accumulated_dy += ekf_dy
+        self.accumulated_dtheta += ekf_dtheta
+        self.accumulated_dtheta = np.arctan2(np.sin(self.accumulated_dtheta), np.cos(self.accumulated_dtheta))
+
+        self.x = self.last_kf_pose[0] + self.accumulated_dx
+        self.y = self.last_kf_pose[1] + self.accumulated_dy
+        self.theta = self.last_kf_pose[2] + self.accumulated_dtheta
         self.theta = np.arctan2(np.sin(self.theta), np.cos(self.theta))
 
-        if self.lidar_processor.is_keyframe([self.x, self.y, self.theta]):
+        dist_from_kf = np.sqrt(self.accumulated_dx**2 + self.accumulated_dy**2)
+        angle_from_kf = abs(self.accumulated_dtheta)
+        is_keyframe = dist_from_kf > self.keyframe_dist_thresh or angle_from_kf > self.keyframe_angle_thresh
+        if is_keyframe:
             if len(self.local_map_scans) >= 3:
                 if self.local_map_dirty:
                     self.rebuild_local_map()
 
-                if self.local_map_points is not None and len(self.local_map_points) > 100:
+                if self.local_map_points is not None and len(self.local_map_points) > 50:
                     pts_icp = current_points if len(current_points) <= self.max_scan_points else \
                               current_points[np.random.choice(len(current_points), self.max_scan_points, replace=False)]
 
@@ -277,12 +293,18 @@ class ICPOdometry(Node):
                         self.get_logger().error(f'ICP error: {e}', throttle_duration_sec=5.0)
                         self.icp_reject_count += 1
 
-            odom_points = self.transform_to_odom(current_points, self.x, self.y, self.theta)
-            self.local_map_scans.append(odom_points)
-            self.local_map_dirty = True
-            self.keyframe_count += 1
+            if len(current_points) >= 10:
+                odom_points = self.transform_to_odom(current_points, self.x, self.y, self.theta)
+                self.local_map_scans.append(odom_points)
+                self.local_map_dirty = True
+                self.keyframe_count += 1
+                self.last_kf_pose = [self.x, self.y, self.theta]
+                self.accumulated_dx = 0.0
+                self.accumulated_dy = 0.0
+                self.accumulated_dtheta = 0.0
 
-        self.publish_odom_and_tf(current_time)
+        self.publish_odom_and_tf(current_time, is_keyframe=is_keyframe)
+        self.get_logger().info(f'pose x={self.x:.3f} y={self.y:.3f} theta={self.theta:.3f}', throttle_duration_sec=1.0)
         self.prev_ekf_x, self.prev_ekf_y, self.prev_ekf_theta = ekf_x, ekf_y, ekf_theta
 
         self.update_count += 1
@@ -320,7 +342,7 @@ class ICPOdometry(Node):
         _, _, yaw = tf_transformations.euler_from_quaternion([q.x, q.y, q.z, q.w])
         return x, y, yaw
 
-    def publish_odom_and_tf(self, timestamp):
+    def publish_odom_and_tf(self, timestamp, is_keyframe=False):
         q = tf_transformations.quaternion_from_euler(0, 0, self.theta)
 
         odom = Odometry()
@@ -334,6 +356,9 @@ class ICPOdometry(Node):
         odom.pose.pose.orientation.y = q[1]
         odom.pose.pose.orientation.z = q[2]
         odom.pose.pose.orientation.w = q[3]
+        if is_keyframe:
+            self.odom_keyframe_pub.publish(odom)
+            
         self.odom_pub.publish(odom)
 
         if self.publish_tf:
@@ -349,31 +374,6 @@ class ICPOdometry(Node):
             t.transform.rotation.z = q[2]
             t.transform.rotation.w = q[3]
             self.tf_broadcaster.sendTransform(t)
-
-    def publish_map(self):
-        if self.local_map_points is None or len(self.local_map_points) == 0:
-            return
-
-        msg = PointCloud2()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'odom'
-        msg.height = 1
-        msg.width = len(self.local_map_points)
-        msg.fields = [
-            PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
-            PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
-            PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
-        ]
-        msg.is_bigendian = False
-        msg.point_step = 12
-        msg.row_step = msg.point_step * msg.width
-        msg.is_dense = True
-
-        points_3d = np.column_stack([self.local_map_points, np.zeros(len(self.local_map_points))])
-        msg.data = points_3d.astype(np.float32).tobytes()
-
-        self.map_pub.publish(msg)
-
 
 def main(args=None):
     rclpy.init(args=args)
