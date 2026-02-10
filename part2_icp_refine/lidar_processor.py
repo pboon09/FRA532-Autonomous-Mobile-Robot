@@ -14,7 +14,7 @@ class LidarProcessor:
         ranges = np.array(ranges, dtype=np.float64)
         angles = np.array(angles, dtype=np.float64)
 
-        valid = (np.isfinite(ranges) & (ranges > 0.12) & (ranges < 30.0))
+        valid = (np.isfinite(ranges) & (ranges > 0.12) & (ranges < 3.5))
         ranges = ranges[valid]
         angles = angles[valid]
 

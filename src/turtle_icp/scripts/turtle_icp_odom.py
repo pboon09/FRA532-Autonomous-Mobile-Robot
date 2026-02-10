@@ -117,7 +117,7 @@ class LidarProcessor:
     def scan_to_pointcloud(self, ranges, angles):
         ranges = np.array(ranges, dtype=np.float64)
         angles = np.array(angles, dtype=np.float64)
-        valid = (np.isfinite(ranges) & (ranges > 0.12) & (ranges < 30.0))
+        valid = (np.isfinite(ranges) & (ranges > 0.12) & (ranges < 3.5))
         ranges, angles = ranges[valid], angles[valid]
         if len(ranges) == 0:
             return np.empty((0, 2))
