@@ -1113,12 +1113,12 @@ return G
 |--------|-------|
 | Avg Fitness | 0.9863 |
 | Avg RMSE | 0.060m |
-| Avg Runtime | 2.01ms |
+| Avg Runtime | 2.08ms |
 | Consistency Score | 0.9277 |
 
 **Performance Discussion:**
 
-The empty hallway provides a baseline environment with fitness score of 0.9863 and RMSE of 0.060m (6cm average error). The simple wall geometry enables fast runtime (2.01ms) but results in the lowest consistency score (0.9277) due to fewer geometric constraints in feature-sparse conditions.
+The empty hallway provides a baseline environment with fitness score of 0.9863 and RMSE of 0.060m (6cm average error). The simple wall geometry enables fast runtime (2.08ms) but results in the lowest consistency score (0.9277) due to fewer geometric constraints in feature-sparse conditions.
 
 **Key Insight**: Feature-sparse environments achieve fast performance but lower consistency due to weaker geometric constraints compared to obstacle-rich environments.
 
@@ -1135,14 +1135,14 @@ The empty hallway provides a baseline environment with fitness score of 0.9863 a
 
 | Metric | Value |
 |--------|-------|
-| Avg Fitness | 0.9914 |
-| Avg RMSE | 0.047m |
-| Avg Runtime | 2.40ms |
+| Avg Fitness | 0.9913 |
+| Avg RMSE | 0.046m |
+| Avg Runtime | 2.31ms |
 | Consistency Score | 0.9803 |
 
 **Performance Discussion:**
 
-Despite sharp turns, this sequence achieves the best fitness (0.9914) and lowest RMSE (0.047m). Sharp turns trigger higher keyframe density, creating denser local maps with richer geometric constraints. Obstacles provide additional features that strengthen alignment compared to empty hallways. Runtime is 2.40ms but remains real-time capable.
+Despite sharp turns, this sequence achieves the best fitness (0.9913) and lowest RMSE (0.046m). Sharp turns trigger higher keyframe density, creating denser local maps with richer geometric constraints. Obstacles provide additional features that strengthen alignment compared to empty hallways. Runtime is 2.31ms but remains real-time capable.
 
 **Key Insight**: Sharp turns improve ICP performance through increased keyframe density and richer geometric features.
 
@@ -1159,14 +1159,14 @@ Despite sharp turns, this sequence achieves the best fitness (0.9914) and lowest
 
 | Metric | Value |
 |--------|-------|
-| Avg Fitness | 0.9903 |
+| Avg Fitness | 0.9904 |
 | Avg RMSE | 0.048m |
-| Avg Runtime | 2.35ms |
+| Avg Runtime | 2.38ms |
 | Consistency Score | 0.9818 |
 
 **Performance Discussion:**
 
-This sequence achieves the best consistency score (0.9818) with fitness of 0.9903 and RMSE of 0.048m. Smooth motion provides better odometry initial guesses, allowing ICP to start closer to the true solution. High scan overlap makes correspondence matching easier and more stable. Runtime of 2.35ms balances speed and accuracy.
+This sequence achieves the best consistency score (0.9818) with fitness of 0.9904 and RMSE of 0.048m. Smooth motion provides better odometry initial guesses, allowing ICP to start closer to the true solution. High scan overlap makes correspondence matching easier and more stable. Runtime of 2.38ms balances speed and accuracy.
 
 **Key Insight**: Smooth motion achieves the most stable and predictable performance over long trajectories through good odometry initial guesses and consistent scan overlap.
 
@@ -1198,13 +1198,13 @@ This section compares the three odometry methods across all sequences. Since gro
 |----------|--------|---------------------------|-------------------|-------------------------------|
 | **seq00** | Wheel Odom | (2.73, -3.40) | 37.86 | 6.98 |
 | | EKF | (-0.25, -3.24) | 34.94 | 0.08 |
-| | ICP | (1.35, -0.02) | 6.79 | - |
+| | ICP | (1.78, 0.08) | 4.95 | - |
 | **seq01** | Wheel Odom | (-3.70, -3.75) | 36.75 | 20.35 |
 | | EKF | (2.03, 0.03) | -0.49 | 0.14 |
-| | ICP | (1.85, -0.58) | 2.08 | - |
+| | ICP | (2.05, 0.45) | -1.53 | - |
 | **seq02** | Wheel Odom | (0.32, -1.27) | 47.85 | 5.24 |
 | | EKF | (2.78, -0.96) | 37.54 | 0.09 |
-| | ICP | (4.74, 0.85) | 15.66 | - |
+| | ICP | (5.27, 1.04) | 13.65 | - |
 
 **Key Improvements:**
 
@@ -1236,17 +1236,17 @@ Without ground truth, absolute trajectory error cannot be quantified. The compar
 
 | Sequence | Environment | Fitness | RMSE (m) | Runtime (ms) | Consistency |
 |----------|-------------|---------|----------|--------------|-------------|
-| **seq00** | Empty Hallway | 0.9863 | 0.060 | **2.01** | 0.9277 |
-| **seq01** | Sharp Turns | **0.9914** | 0.047 | 2.40 | 0.9803 |
-| **seq02** | Smooth Motion | 0.9903 | **0.048** | 2.35 | **0.9818** |
+| **seq00** | Empty Hallway | 0.9863 | 0.060 | **2.08** | 0.9277 |
+| **seq01** | Sharp Turns | **0.9913** | **0.046** | 2.31 | 0.9803 |
+| **seq02** | Smooth Motion | 0.9904 | 0.048 | 2.38 | **0.9818** |
 
 **Key Findings:**
 
-1. **Fitness (0.9863-0.9914)**: All sequences achieve >98.6% point alignment across all environments.
+1. **Fitness (0.9863-0.9913)**: All sequences achieve >98.6% point alignment across all environments.
 
-2. **RMSE (0.047-0.060m)**: Geometric error under 6cm with 13mm difference between best and worst cases.
+2. **RMSE (0.046-0.060m)**: Geometric error under 6cm with 14mm difference between best and worst cases.
 
-3. **Runtime (2.01-2.40ms)**: Real-time capable at 400-500Hz, well above 10Hz LiDAR rates.
+3. **Runtime (2.08-2.38ms)**: Real-time capable at 400-480Hz, well above 10Hz LiDAR rates.
 
 4. **Consistency (0.9277-0.9818)**: High stability with low variance across all sequences.
 
@@ -1337,19 +1337,141 @@ src/slam_toolbox/config/
 
 **Critical Parameters to Adjust:**
 
-| Parameter | Default | Description | When to Change |
-|-----------|---------|-------------|----------------|
-| **scan_topic** | `/scan` | LiDAR topic to subscribe to | If your LiDAR publishes to a different topic |
-| **odom_frame** | `odom` | Odometry frame name | Must match your EKF output frame |
-| **base_frame** | `base_footprint` | Robot base frame | Must match your robot's URDF |
-| **map_frame** | `map` | Global map frame | Usually keep as `map` |
-| **resolution** | `0.05` | Map resolution (m/pixel) | Higher (0.1) for faster processing, lower (0.025) for detail |
-| **min_laser_range** | `0.12` | Minimum valid range (m) | Match your LiDAR specs |
-| **max_laser_range** | `3.5` | Maximum valid range (m) | Reduce for indoor, increase for outdoor |
-| **minimum_travel_distance** | `0.5` | Distance (m) before adding new scan | Lower (0.2) for detailed maps, higher (1.0) for speed |
-| **minimum_travel_heading** | `0.5` | Rotation (rad) before adding new scan | Lower (0.2) for curves, higher (1.0) for straight paths |
-| **do_loop_closing** | `true` | Enable loop closure detection | Set `false` if causing issues |
-| **loop_search_maximum_distance** | `3.0` | Max distance (m) to search for loops | Increase for large loops |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| **scan_topic** | `/scan` | LiDAR topic to subscribe to |
+| **odom_frame** | `odom` | Odometry frame name |
+| **base_frame** | `base_footprint` | Robot base frame |
+| **map_frame** | `map` | Global map frame |
+| **resolution** | `0.05` | Map resolution (m/pixel) |
+| **min_laser_range** | `0.12` | Minimum valid LiDAR range (m) |
+| **max_laser_range** | `3.5` | Maximum valid LiDAR range (m) |
+| **minimum_travel_distance** | `0.5` | Distance (m) before adding new scan |
+| **minimum_travel_heading** | `0.5` | Rotation (rad) before adding new scan |
+| **scan_buffer_size** | `10` | Number of recent scans buffered for matching |
+| **scan_buffer_maximum_scan_distance** | `10.0` | Max distance (m) between buffered scans |
+| **link_scan_maximum_distance** | `1.5` | Max distance (m) for sequential scan linking |
+| **do_loop_closing** | `true` | Enable loop closure detection |
+| **loop_search_maximum_distance** | `3.0` | Max distance (m) to search for loop candidates |
+| **loop_match_minimum_chain_size** | `10` | Min consecutive scans to confirm loop closure |
+| **loop_match_maximum_variance_coarse** | `3.0` | Max variance for coarse loop matching |
+| **loop_match_minimum_response_coarse** | `0.35` | Min correlation score for coarse loop detection |
+| **loop_match_minimum_response_fine** | `0.45` | Min correlation score for fine loop verification |
+| **loop_search_space_dimension** | `8.0` | Search space size (m) for loop closure |
+| **correlation_search_space_dimension** | `0.5` | Search space size (m) for scan matching |
+
+### 3.5 Experimental Results
+
+<p align="center">
+  <img src="media/part3_demo.gif" width="100%">
+</p>
+
+This section demonstrates SLAM performance using slam_toolbox with online asynchronous mode, comparing trajectory accuracy across four odometry methods: Wheel, EKF, ICP, and SLAM.
+
+#### 3.5.1 Experimental Setup
+
+**Dataset:**
+| Sequence | Description | Duration | Samples |
+|----------|-------------|----------|---------|
+| seq00 | Empty hallway | 525s | 10,504 |
+| seq01 | Non-empty hallway with sharp turns | 393s | 7,854 |
+| seq02 | Non-empty hallway with non-aggressive motion | 599s | 11,975 |
+
+**SLAM Configuration:**
+| Parameter | Value |
+|-----------|-------|
+| Mode | online_async |
+| Resolution | 0.05 m/pixel |
+| Min/Max Range | 0.12 / 3.5 m |
+| Loop Closure | Enabled |
+| **Frontend** | Correlative scan matcher |
+| **Backend** | Ceres solver (Levenberg-Marquardt) |
+
+**Modified Parameters from Default:**
+| Parameter | Default | Modified | Rationale |
+|-----------|---------|----------|-----------|
+| loop_search_maximum_distance | 3.0 m | 8.0 m | Increased to detect loops in longer hallway sequences where the robot returns to start after ~55m of travel |
+| loop_search_space_dimension | 8.0 m | 10.0 m | Larger search space accommodates positional uncertainty accumulated over long trajectories while maintaining computational efficiency |
+
+**Comparison Methods:**
+- **Wheel:** Raw differential drive odometry from encoder integration
+- **EKF:** Fused encoder + IMU using Extended Kalman Filter
+- **ICP:** Scan-to-map matching with keyframe-based mapping
+- **SLAM:** slam_toolbox with pose-graph optimization and loop closure
+
+#### 3.5.2 Trajectory Comparison
+
+All trajectories are aligned to start at (0, 0, 0) for fair comparison since Wheel/EKF/ICP operate in the `odom` frame while SLAM operates in the `map` frame.
+
+**Sequence 00:**
+
+![seq00 trajectory](part3_slam_comparison/figures/seq00/all_trajectories.png)
+
+**Sequence 01:**
+
+![seq01 trajectory](part3_slam_comparison/figures/seq01/all_trajectories.png)
+
+**Sequence 02:**
+
+![seq02 trajectory](part3_slam_comparison/figures/seq02/all_trajectories.png)
+
+#### 3.5.3 Time Series Analysis
+
+**Sequence 00:**
+
+![seq00 time series](part3_slam_comparison/figures/seq00/time_series.png)
+
+**Sequence 01:**
+
+![seq01 time series](part3_slam_comparison/figures/seq01/time_series.png)
+
+**Sequence 02:**
+
+![seq02 time series](part3_slam_comparison/figures/seq02/time_series.png)
+
+#### 3.5.4 Map Comparison: ICP vs SLAM
+
+**Sequence 00:**
+
+![seq00 map comparison](part3_slam_comparison/figures/seq00/map_comparison.png)
+
+**Sequence 01:**
+
+![seq01 map comparison](part3_slam_comparison/figures/seq01/map_comparison.png)
+
+**Sequence 02:**
+
+![seq02 map comparison](part3_slam_comparison/figures/seq02/map_comparison.png)
+
+#### 3.5.5 Performance Metrics
+
+**Drift from Start (m):**
+
+| Sequence | Wheel | EKF | ICP | SLAM |
+|----------|-------|-----|-----|------|
+| seq00 | TBD | TBD | TBD | TBD |
+| seq01 | TBD | TBD | TBD | TBD |
+| seq02 | TBD | TBD | TBD | TBD |
+
+**Trajectory Length (m):**
+
+| Sequence | Wheel | EKF | ICP | SLAM |
+|----------|-------|-----|-----|------|
+| seq00 | TBD | TBD | TBD | TBD |
+| seq01 | TBD | TBD | TBD | TBD |
+| seq02 | TBD | TBD | TBD | TBD |
+
+**Analysis:**
+
+Expected performance hierarchy for loop closure sequences (seq00, seq01):
+- **SLAM:** Minimal drift (<0.5m) after loop closure correction
+- **ICP:** Low drift (~1-2m) from scan matching constraints
+- **EKF:** Moderate drift (~5-10m) from IMU heading correction
+- **Wheel:** High drift (>10m) from uncorrected encoder integration
+
+For non-loop sequence (seq02):
+- SLAM and ICP show similar performance without loop closure
+- Drift increases proportionally with trajectory length for all methods
 
 ---
 
