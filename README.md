@@ -1055,6 +1055,47 @@ The ICP odometry pipeline is evaluated using four key metrics:
 - **Interpretation**: Lower variance in fitness and RMSE indicates stable, predictable performance
 - **What it indicates**: Reliability and robustness of the pipeline across the entire trajectory
 
+**Visualization Methods:**
+
+Two mapping approaches are used to visualize the results:
+
+**Map (Scatter Plot):**
+- **Method**: Direct projection of laser scan endpoints to global coordinates
+- **Algorithm**: Transform each laser hit to global frame and plot as scatter points
+- **Output**: Gray points showing obstacle locations
+- **Use case**: Quick visualization of raw sensor data
+- **Limitations**: Does not show free space or unknown areas
+
+**Occupancy Grid:**
+- **Method**: Probabilistic occupancy mapping with ray tracing
+- **Algorithm**:
+```
+Input: Trajectory poses, Laser scans, Resolution r
+Output: Occupancy grid G
+
+1. Initialize hit and miss counters:
+   For each pose (x, y, θ) in trajectory:
+       For each laser beam (range, angle) in scan:
+           endpoint = (x + range·cos(θ+angle), y + range·sin(θ+angle))
+
+2. Mark observations:
+   hit_count[endpoint_cell] += 1  # Obstacle detected
+
+3. Ray tracing (Bresenham):
+   For each cell along ray from robot to endpoint:
+       miss_count[cell] += 1  # Free space
+
+4. Classify cells:
+   For each cell in grid:
+       ratio = hits / (hits + misses)
+       if ratio > 0.6: cell = Occupied (100)
+       elif ratio < 0.4: cell = Free (0)
+       else: cell = Unknown (-1)
+
+return G
+```
+- **Use case**: Navigation, path planning, comparison with ROS mapper
+
 #### 2.8.2 Results by Sequence
 
 **Sequence 00:**
