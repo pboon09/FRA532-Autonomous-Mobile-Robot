@@ -1009,7 +1009,7 @@ We use scan-to-map matching with local map management:
 ### 2.8 Experimental Results
 
 <p align="center">
-  <img src="media/part1_demo.gif" width="100%">
+  <img src="media/part2_demo.gif" width="100%">
 </p>
 
 
@@ -1111,14 +1111,14 @@ return G
 
 | Metric | Value |
 |--------|-------|
-| Avg Fitness | 0.9957 |
-| Avg RMSE | 0.041m |
-| Avg Runtime | 1.94ms |
-| Consistency Score | 0.9849 |
+| Avg Fitness | 0.9863 |
+| Avg RMSE | 0.060m |
+| Avg Runtime | 2.01ms |
+| Consistency Score | 0.9277 |
 
 **Performance Discussion:**
 
-The empty hallway provides a baseline environment with fitness score of 0.9957 and RMSE of 0.041m (4cm average error). The simple wall geometry enables the fastest runtime (1.94ms) but results in the lowest consistency score (0.9849) due to fewer geometric constraints in feature-sparse conditions.
+The empty hallway provides a baseline environment with fitness score of 0.9863 and RMSE of 0.060m (6cm average error). The simple wall geometry enables fast runtime (2.01ms) but results in the lowest consistency score (0.9277) due to fewer geometric constraints in feature-sparse conditions.
 
 **Key Insight**: Feature-sparse environments achieve fast performance but lower consistency due to weaker geometric constraints compared to obstacle-rich environments.
 
@@ -1135,14 +1135,14 @@ The empty hallway provides a baseline environment with fitness score of 0.9957 a
 
 | Metric | Value |
 |--------|-------|
-| Avg Fitness | 0.9966 |
-| Avg RMSE | 0.035m |
-| Avg Runtime | 2.15ms |
-| Consistency Score | 0.9885 |
+| Avg Fitness | 0.9914 |
+| Avg RMSE | 0.047m |
+| Avg Runtime | 2.40ms |
+| Consistency Score | 0.9803 |
 
 **Performance Discussion:**
 
-Despite sharp turns, this sequence achieves the best fitness (0.9966) and RMSE (0.035m). Sharp turns trigger higher keyframe density, creating denser local maps with richer geometric constraints. Obstacles provide additional features that strengthen alignment compared to empty hallways. Runtime increases slightly to 2.15ms but remains real-time capable.
+Despite sharp turns, this sequence achieves the best fitness (0.9914) and lowest RMSE (0.047m). Sharp turns trigger higher keyframe density, creating denser local maps with richer geometric constraints. Obstacles provide additional features that strengthen alignment compared to empty hallways. Runtime is 2.40ms but remains real-time capable.
 
 **Key Insight**: Sharp turns improve ICP performance through increased keyframe density and richer geometric features.
 
@@ -1159,14 +1159,14 @@ Despite sharp turns, this sequence achieves the best fitness (0.9966) and RMSE (
 
 | Metric | Value |
 |--------|-------|
-| Avg Fitness | 0.9967 |
-| Avg RMSE | 0.036m |
-| Avg Runtime | 2.09ms |
-| Consistency Score | 0.9894 |
+| Avg Fitness | 0.9903 |
+| Avg RMSE | 0.048m |
+| Avg Runtime | 2.35ms |
+| Consistency Score | 0.9818 |
 
 **Performance Discussion:**
 
-This sequence achieves the best consistency score (0.9894) with fitness of 0.9967 and RMSE of 0.036m. Smooth motion provides better odometry initial guesses, allowing ICP to start closer to the true solution. High scan overlap makes correspondence matching easier and more stable. Runtime of 2.09ms balances speed and accuracy.
+This sequence achieves the best consistency score (0.9818) with fitness of 0.9903 and RMSE of 0.048m. Smooth motion provides better odometry initial guesses, allowing ICP to start closer to the true solution. High scan overlap makes correspondence matching easier and more stable. Runtime of 2.35ms balances speed and accuracy.
 
 **Key Insight**: Smooth motion achieves the most stable and predictable performance over long trajectories through good odometry initial guesses and consistent scan overlap.
 
@@ -1236,19 +1236,19 @@ Without ground truth, absolute trajectory error cannot be quantified. The compar
 
 | Sequence | Environment | Fitness | RMSE (m) | Runtime (ms) | Consistency |
 |----------|-------------|---------|----------|--------------|-------------|
-| **seq00** | Empty Hallway | 0.9957 | 0.041 | **1.94** | 0.9849 |
-| **seq01** | Sharp Turns | **0.9966** | **0.035** | 2.15 | 0.9885 |
-| **seq02** | Smooth Motion | **0.9967** | 0.036 | 2.09 | **0.9894** |
+| **seq00** | Empty Hallway | 0.9863 | 0.060 | **2.01** | 0.9277 |
+| **seq01** | Sharp Turns | **0.9914** | 0.047 | 2.40 | 0.9803 |
+| **seq02** | Smooth Motion | 0.9903 | **0.048** | 2.35 | **0.9818** |
 
 **Key Findings:**
 
-1. **Fitness (0.9957-0.9967)**: All sequences achieve >99.5% point alignment across all environments.
+1. **Fitness (0.9863-0.9914)**: All sequences achieve >98.6% point alignment across all environments.
 
-2. **RMSE (0.035-0.041m)**: Geometric error under 4cm with only 6mm difference between best and worst cases.
+2. **RMSE (0.047-0.060m)**: Geometric error under 6cm with 13mm difference between best and worst cases.
 
-3. **Runtime (1.94-2.15ms)**: Real-time capable at 400-500Hz, well above 10Hz LiDAR rates.
+3. **Runtime (2.01-2.40ms)**: Real-time capable at 400-500Hz, well above 10Hz LiDAR rates.
 
-4. **Consistency (0.9849-0.9894)**: High stability with low variance across all sequences.
+4. **Consistency (0.9277-0.9818)**: High stability with low variance across all sequences.
 
 **Performance Trends:**
 

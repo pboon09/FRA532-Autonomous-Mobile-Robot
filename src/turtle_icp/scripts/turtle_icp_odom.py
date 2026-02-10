@@ -272,11 +272,8 @@ class ICPOdometry(Node):
                     self.rebuild_local_map()
 
                 if self.local_map_points is not None and len(self.local_map_points) > 50:
-                    pts_icp = current_points if len(current_points) <= self.max_scan_points else \
-                              current_points[np.random.choice(len(current_points), self.max_scan_points, replace=False)]
-
                     try:
-                        result = self.icp.register_scan_to_map(pts_icp, self.local_map_points,
+                        result = self.icp.register_scan_to_map(current_points, self.local_map_points,
                                                                 self.x, self.y, self.theta)
                         if result['success']:
                             corr_t = np.sqrt((result['x'] - self.x)**2 + (result['y'] - self.y)**2)

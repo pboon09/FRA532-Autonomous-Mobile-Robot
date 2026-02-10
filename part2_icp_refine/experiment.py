@@ -191,10 +191,6 @@ class Experiment:
                         scan_points_body = np.asarray(current_pcd.points)
                         map_points_odom = np.asarray(local_map.points)
 
-                        if len(scan_points_body) > 300:
-                            idx = np.random.choice(len(scan_points_body), 300, replace=False)
-                            scan_points_body = scan_points_body[idx]
-
                         try:
                             icp_result = icp_method.register_scan_to_map(
                                 scan_points_body, map_points_odom,

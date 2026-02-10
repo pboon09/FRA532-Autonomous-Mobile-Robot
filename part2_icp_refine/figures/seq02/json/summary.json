@@ -4,20 +4,20 @@
     "Point-to-Point": {
       "num_keyframes": 217,
       "final_pose": {
-        "x": 5.7901742614915905,
-        "y": 0.9642179147034824,
-        "theta_deg": 12.288306505257525
+        "x": 5.470831171508418,
+        "y": 0.42701405460866704,
+        "theta_deg": 13.64201892332544
       },
-      "avg_runtime_ms": 2.3851205255383645,
-      "std_runtime_ms": 0.9371880802249138,
-      "total_runtime_s": 0.51041579246521,
-      "avg_fitness": 0.990389975978642,
-      "std_fitness": 0.018339748478324192,
-      "avg_rmse": 0.04826519712490572,
-      "std_rmse": 0.01816068890695043,
-      "avg_iterations": 16.962616822429908,
-      "consistency_score": 0.9817497813073627,
-      "trajectory_length_m": 58.30709146757094
+      "avg_runtime_ms": 2.3513308195310216,
+      "std_runtime_ms": 0.928242268545524,
+      "total_runtime_s": 0.5031847953796387,
+      "avg_fitness": 0.9903012597846638,
+      "std_fitness": 0.018397629204966966,
+      "avg_rmse": 0.047998128504275046,
+      "std_rmse": 0.017973152364891293,
+      "avg_iterations": 16.742990654205606,
+      "consistency_score": 0.9818146092150709,
+      "trajectory_length_m": 58.49766933666526
     }
   },
   "best_method": "Point-to-Point"
