@@ -266,8 +266,13 @@ def plot_occupancy_grid(occupancy_grid, grid_info, trajectory=None,
                        title='Occupancy Grid Map', show_trajectory=True):
     fig, ax = plt.subplots(figsize=(14, 12))
 
+    display_grid = np.zeros_like(occupancy_grid, dtype=np.float32)
+    display_grid[occupancy_grid == 0] = -1
+    display_grid[occupancy_grid == -1] = 50
+    display_grid[occupancy_grid == 100] = 100
+
     cmap = plt.cm.colors.ListedColormap(['white', 'gray', 'black'])
-    bounds = [-1, 33, 66, 100]
+    bounds = [-1.5, -0.5, 50.5, 100.5]
     norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
 
     extent = [
@@ -277,7 +282,7 @@ def plot_occupancy_grid(occupancy_grid, grid_info, trajectory=None,
         grid_info['origin_y'] + grid_info['height'] * grid_info['resolution']
     ]
 
-    im = ax.imshow(occupancy_grid, cmap=cmap, norm=norm,
+    im = ax.imshow(display_grid, cmap=cmap, norm=norm,
                    origin='lower', extent=extent, interpolation='nearest')
 
     if show_trajectory and trajectory is not None:
@@ -290,8 +295,8 @@ def plot_occupancy_grid(occupancy_grid, grid_info, trajectory=None,
                 zorder=10, markeredgecolor='black', markeredgewidth=1.5)
         ax.legend(loc='best', fontsize=11, framealpha=0.9)
 
-    cbar = plt.colorbar(im, ax=ax, ticks=[-1, 0, 100], shrink=0.8)
-    cbar.ax.set_yticklabels(['Unknown', 'Free', 'Occupied'])
+    cbar = plt.colorbar(im, ax=ax, ticks=[-1, 25, 75], shrink=0.8)
+    cbar.ax.set_yticklabels(['Free', 'Unknown', 'Occupied'])
 
     ax.set_xlabel('X [m]', fontsize=13, fontweight='bold')
     ax.set_ylabel('Y [m]', fontsize=13, fontweight='bold')
