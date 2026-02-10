@@ -8,7 +8,6 @@ Panels:
         - /Wheel Odometry1/Shape1
         - /EKF1/Shape1
         - /ICP1/Shape1
-        - /SLAM Path1/Status1
         - /LaserScan1/Topic1
       Splitter Ratio: 0.6235294342041016
     Tree Height: 739
@@ -191,7 +190,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /wheel_odom
+        Value: /odometry/wheel_odom
       Value: true
     - Angle Tolerance: 0.10000000149011612
       Class: rviz_default_plugins/Odometry
@@ -218,7 +217,7 @@ Visualization Manager:
         Alpha: 1
         Axes Length: 1
         Axes Radius: 0.10000000149011612
-        Color: 165; 29; 45
+        Color: 255; 25; 0
         Head Length: 0.10000000149011612
         Head Radius: 0.10000000149011612
         Shaft Length: 0.25
@@ -269,13 +268,13 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /odom_icp
+        Value: /odometry/icp_keyframes
       Value: true
     - Alpha: 1
       Axes Length: 1
       Axes Radius: 0.10000000149011612
       Class: rviz_default_plugins/PoseWithCovariance
-      Color: 255; 25; 0
+      Color: 25; 255; 0
       Covariance:
         Orientation:
           Alpha: 0.5
@@ -456,9 +455,9 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 2892
+      Max Intensity: 2991
       Min Color: 0; 0; 0
-      Min Intensity: 105
+      Min Intensity: 168
       Name: LaserScan
       Position Transformer: XYZ
       Selectable: true

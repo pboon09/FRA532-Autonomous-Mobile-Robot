@@ -75,11 +75,21 @@ def generate_launch_description():
         parameters=[use_sim_time, {'publish_tf': False}]
     )
 
+    icp_mapper = Node(
+        package='turtle_icp',
+        executable='turtle_icp_mapper.py',
+        name='turtle_icp_mapper',
+        output='screen',
+        parameters=[use_sim_time],
+        remappings=[('/map', '/map_icp')]
+    )
+
     return LaunchDescription([
         robot_state_publisher,
         wheel_odometry,
         ekf_node,
         icp_odometry,
+        icp_mapper,
         slam_toolbox_launch,
         turtle_path,
         rviz2,
