@@ -145,10 +145,10 @@ class ICPMapper(Node):
                 self.current_map_max_y = self.max_y + buffer * self.map_resolution
                 needs_resize = True
 
-        if needs_resize:
-            self.get_logger().info(f'Map resized to cover area: '
-                                   f'[{self.current_map_min_x:.1f}, {self.current_map_max_x:.1f}] x '
-                                   f'[{self.current_map_min_y:.1f}, {self.current_map_max_y:.1f}]')
+        # if needs_resize:
+        #     self.get_logger().info(f'Map resized to cover area: '
+        #                            f'[{self.current_map_min_x:.1f}, {self.current_map_max_x:.1f}] x '
+        #                            f'[{self.current_map_min_y:.1f}, {self.current_map_max_y:.1f}]')
 
         msg = OccupancyGrid()
         msg.header.stamp = self.get_clock().now().to_msg()

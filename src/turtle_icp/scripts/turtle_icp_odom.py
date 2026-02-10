@@ -301,7 +301,7 @@ class ICPOdometry(Node):
                 self.accumulated_dtheta = 0.0
 
         self.publish_odom_and_tf(current_time, is_keyframe=is_keyframe)
-        self.get_logger().info(f'pose x={self.x:.3f} y={self.y:.3f} theta={self.theta:.3f}', throttle_duration_sec=1.0)
+        # self.get_logger().info(f'pose x={self.x:.3f} y={self.y:.3f} theta={self.theta:.3f}', throttle_duration_sec=1.0)
         self.prev_ekf_x, self.prev_ekf_y, self.prev_ekf_theta = ekf_x, ekf_y, ekf_theta
 
         self.update_count += 1
