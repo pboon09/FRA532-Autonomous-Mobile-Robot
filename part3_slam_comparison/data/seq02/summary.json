@@ -1,0 +1,55 @@
+{
+  "sequence": "seq02",
+  "methods": {
+    "Wheel": {
+      "num_poses": 4775,
+      "drift_from_start_m": 1.3105396918998047,
+      "trajectory_length_m": 59.70533291674328
+    },
+    "EKF": {
+      "num_poses": 4773,
+      "drift_from_start_m": 2.902364108043789,
+      "trajectory_length_m": 59.60731022722616
+    },
+    "ICP": {
+      "num_poses": 205,
+      "drift_from_start_m": 5.682837069930068,
+      "trajectory_length_m": 58.21055089431448
+    },
+    "SLAM": {
+      "num_poses": 6278,
+      "drift_from_start_m": 6.343948849641396,
+      "trajectory_length_m": 62.12245536593072
+    }
+  },
+  "comparisons": {
+    "Wheel_vs_SLAM": {
+      "mean_error_m": 4.0962265546969485,
+      "max_error_m": 7.483576437895976
+    },
+    "EKF_vs_SLAM": {
+      "mean_error_m": 3.9114835544132474,
+      "max_error_m": 6.906932592506705
+    },
+    "ICP_vs_SLAM": {
+      "mean_error_m": 10.054974773571724,
+      "max_error_m": 18.35713363096983
+    }
+  },
+  "slam_map_metrics": {
+    "total_cells": 120085,
+    "occupied_cells": 2507,
+    "free_cells": 38660,
+    "known_cells": 41167,
+    "occupied_percent": 2.08768788774618,
+    "known_percent": 34.28155056834742
+  },
+  "icp_map_metrics": {
+    "total_cells": 391476,
+    "occupied_cells": 4590,
+    "free_cells": 76335,
+    "known_cells": 80925,
+    "occupied_percent": 1.1724856696195936,
+    "known_percent": 20.671765318946754
+  }
+}
