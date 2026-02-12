@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import numpy as np
-import argparse
 from pathlib import Path
 from utils import save_figure, plot_all_trajectories, plot_time_series
 import matplotlib.pyplot as plt
@@ -56,7 +55,7 @@ def process_bag_file(script_dir, data_dir, sequence_name):
     print(f'\nSummary:')
     for method, info in summary['methods'].items():
         print(f'  {method}: {info["num_poses"]} poses, '
-              f'drift: {info["drift_rate_percent"]:.2f}%, '
+              f'trans error: {info["translational_error_m"]:.3f}m ({info["drift_rate_percent"]:.2f}%), '
               f'length: {info["trajectory_length_m"]:.3f}m')
 
     return True
@@ -116,30 +115,31 @@ def plot_map(map_data, metadata, trajectory, title):
     return fig
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Visualize SLAM comparison results')
-    parser.add_argument('--sequence', type=str, required=True, help='Sequence name (e.g., seq00)')
-    args = parser.parse_args()
+def process_sequence(script_dir, data_dir, sequence_name):
+    print(f'\n{"="*60}')
+    print(f'Processing: {sequence_name}')
+    print(f'{"="*60}')
 
-    script_dir = Path(__file__).parent
-    data_dir = script_dir / 'data'
-    output_dir = script_dir / 'figures' / args.sequence
+    output_dir = script_dir / 'figures' / sequence_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    process_bag_file(script_dir, data_dir, args.sequence)
+    # Process bag file
+    process_bag_file(script_dir, data_dir, sequence_name)
 
-    print(f'\nLoading data for sequence: {args.sequence}')
-    trajectories, trajectories_ts = load_data(data_dir, args.sequence)
+    # Load data
+    print(f'\nLoading data for sequence: {sequence_name}')
+    trajectories, trajectories_ts = load_data(data_dir, sequence_name)
 
-    summary_file = data_dir / args.sequence / 'summary.json'
+    # Load and print summary
+    summary_file = data_dir / sequence_name / 'summary.json'
     if summary_file.exists():
         with open(summary_file, 'r') as f:
             summary = json.load(f)
         print(f'\nTrajectory Summary:')
         for method, info in summary['methods'].items():
             print(f'  {method}: {info["num_poses"]} poses, '
-              f'drift: {info["drift_rate_percent"]:.2f}%, '
-              f'length: {info["trajectory_length_m"]:.3f}m')
+                  f'drift: {info["drift_rate_percent"]:.2f}%, '
+                  f'length: {info["trajectory_length_m"]:.3f}m')
 
         if 'comparisons' in summary and len(summary['comparisons']) > 0:
             print(f'\nTrajectory Errors (vs SLAM):')
@@ -153,27 +153,31 @@ def main():
             print(f'  ICP:  {cbc["icp"]["coverage_percent"]:.2f}%')
             print(f'  SLAM: {cbc["slam"]["coverage_percent"]:.2f}%')
 
+    # Generate trajectory plot
     if len(trajectories) > 0:
         print(f'\nGenerating aligned trajectory plot...')
-        fig = plot_all_trajectories(trajectories, f'{args.sequence}: Trajectory Comparison', align_to_start=True)
+        fig = plot_all_trajectories(trajectories, f'{sequence_name}: Trajectory Comparison', align_to_start=True)
         save_figure(fig, output_dir / 'all_trajectories.png')
         print(f'Saved to {output_dir}/all_trajectories.png')
 
+    # Generate time series plot
     if len(trajectories_ts) > 0:
         print(f'Generating time series plot...')
-        fig = plot_time_series(trajectories_ts, f'{args.sequence}: Time Series Comparison')
+        fig = plot_time_series(trajectories_ts, f'{sequence_name}: Time Series Comparison')
         save_figure(fig, output_dir / 'time_series.png')
         print(f'Saved to {output_dir}/time_series.png')
 
-    slam_map, slam_metadata = load_map(data_dir, args.sequence, 'slam')
+    # Generate SLAM map plot
+    slam_map, slam_metadata = load_map(data_dir, sequence_name, 'slam')
     if slam_map is not None:
         print(f'Generating SLAM map plot...')
         slam_traj = trajectories.get('SLAM', None)
-        fig = plot_map(slam_map, slam_metadata, slam_traj, f'{args.sequence}: SLAM Occupancy Grid Map')
+        fig = plot_map(slam_map, slam_metadata, slam_traj, f'{sequence_name}: SLAM Occupancy Grid Map')
         save_figure(fig, output_dir / 'slam_map.png')
         print(f'Saved to {output_dir}/slam_map.png')
 
-    icp_map, icp_metadata = load_map(data_dir, args.sequence, 'icp')
+    # Generate map comparison
+    icp_map, icp_metadata = load_map(data_dir, sequence_name, 'icp')
 
 
     if slam_map is not None and icp_map is not None:
@@ -260,13 +264,33 @@ def main():
             ax.yaxis.set_major_locator(plt.MultipleLocator(1.0))
             ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
 
-        plt.suptitle(f'{args.sequence}: Map Comparison (ICP vs SLAM)', fontsize=16, fontweight='bold')
+        plt.suptitle(f'{sequence_name}: Map Comparison (ICP vs SLAM)', fontsize=16, fontweight='bold')
         plt.tight_layout()
 
         save_figure(fig, output_dir / 'map_comparison.png')
         print(f'Saved to {output_dir}/map_comparison.png')
 
-    print('\nDone!')
+    print(f'\n{sequence_name} completed!')
+
+
+def main():
+    script_dir = Path(__file__).parent
+    data_dir = script_dir / 'data'
+
+    sequences = ['seq00', 'seq01', 'seq02']
+
+    for sequence_name in sequences:
+        try:
+            process_sequence(script_dir, data_dir, sequence_name)
+        except Exception as e:
+            print(f'\nError processing {sequence_name}: {e}')
+            import traceback
+            traceback.print_exc()
+            continue
+
+    print('\n' + '='*60)
+    print('All experiments completed!')
+    print('='*60)
 
 
 if __name__ == '__main__':

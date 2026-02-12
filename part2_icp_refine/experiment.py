@@ -129,6 +129,7 @@ class Experiment:
                 'timestamp': t,
                 'wheel_pose': wheel_pose,
                 'ekf_pose': ekf_state,
+                'imu_yaw': imu_corrected,
                 'scan_ranges': d['scan_ranges'],
                 'scan_angles': d['scan_angles']
             })
@@ -274,6 +275,33 @@ class Experiment:
         all_trajectories['Wheel'] = wheel_traj
         all_trajectories['EKF'] = ekf_traj
 
+        final_imu_yaw = ekf_results[-1]['imu_yaw']
+
+        wheel_heading_dev = abs(math.atan2(math.sin(wheel_traj[-1][2] - final_imu_yaw),
+                                          math.cos(wheel_traj[-1][2] - final_imu_yaw)))
+        ekf_heading_dev = abs(math.atan2(math.sin(ekf_traj[-1][2] - final_imu_yaw),
+                                        math.cos(ekf_traj[-1][2] - final_imu_yaw)))
+
+        method_summaries['Wheel'] = {
+            'final_pose': {
+                'x': wheel_traj[-1][0],
+                'y': wheel_traj[-1][1],
+                'theta_deg': math.degrees(wheel_traj[-1][2])
+            },
+            'heading_deviation_from_imu_deg': math.degrees(wheel_heading_dev),
+            'trajectory_length_m': compute_trajectory_drift(wheel_traj)
+        }
+
+        method_summaries['EKF'] = {
+            'final_pose': {
+                'x': ekf_traj[-1][0],
+                'y': ekf_traj[-1][1],
+                'theta_deg': math.degrees(ekf_traj[-1][2])
+            },
+            'heading_deviation_from_imu_deg': math.degrees(ekf_heading_dev),
+            'trajectory_length_m': compute_trajectory_drift(ekf_traj)
+        }
+
         trajectory_poses = {}
 
         for icp_method in icp_methods:
@@ -297,6 +325,9 @@ class Experiment:
             rmse_scores = [r['inlier_rmse'] for r in detailed_results]
             iterations = [r['iterations'] for r in detailed_results]
 
+            icp_heading_dev = abs(math.atan2(math.sin(traj_poses[-1][2] - final_imu_yaw),
+                                            math.cos(traj_poses[-1][2] - final_imu_yaw)))
+
             method_summaries[icp_method.name] = {
                 'num_keyframes': len(traj_poses),
                 'final_pose': {
@@ -304,6 +335,7 @@ class Experiment:
                     'y': traj_poses[-1][1],
                     'theta_deg': math.degrees(traj_poses[-1][2])
                 },
+                'heading_deviation_from_imu_deg': math.degrees(icp_heading_dev),
                 'avg_runtime_ms': np.mean(runtimes),
                 'std_runtime_ms': np.std(runtimes),
                 'total_runtime_s': np.sum(runtimes) / 1000.0,
@@ -321,7 +353,7 @@ class Experiment:
                   f"avg_runtime={np.mean(runtimes):.1f}ms, "
                   f"final_theta={math.degrees(traj_poses[-1][2]):.2f}deg")
 
-        best_method_name = list(method_summaries.keys())[0]
+        best_method_name = icp_methods[0].name
         print(f"\n  Using method: {best_method_name}")
 
         print(f"  Generating trajectory comparison plot...")
@@ -344,7 +376,6 @@ class Experiment:
 
         print(f"  Generating occupancy grid maps (matching turtle_icp_mapper)...")
         for method_name in all_scan_data.keys():
-            # Create occupancy grid with same parameters as turtle_icp_mapper
             occupancy_grid, grid_info = create_occupancy_grid(
                 all_trajectories[method_name],
                 all_scan_data[method_name],
@@ -360,7 +391,7 @@ class Experiment:
                     occupancy_grid,
                     grid_info,
                     trajectory=all_trajectories[method_name],
-                    title=f'{self.sequence_name}: {method_name} Occupancy Grid',
+                    title=f'{self.sequence_name}: {method_name} Occupancy Grid Map',
                     show_trajectory=True
                 )
                 save_figure(fig, self.seq_dir / f'occupancy_grid_{method_name.lower().replace(" ", "_").replace("-", "_")}.png')

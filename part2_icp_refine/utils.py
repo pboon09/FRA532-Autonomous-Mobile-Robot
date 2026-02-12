@@ -72,6 +72,8 @@ def plot_all_trajectories(trajectories, title='Trajectory Comparison'):
     ax.set_title(title, fontsize=14, fontweight='bold')
     ax.legend(loc='best', fontsize=11, framealpha=0.95)
     ax.grid(True, alpha=0.3, linestyle='--')
+    ax.xaxis.set_major_locator(plt.MultipleLocator(1.0))
+    ax.yaxis.set_major_locator(plt.MultipleLocator(1.0))
     ax.set_aspect('equal')
 
     return fig
@@ -150,6 +152,8 @@ def plot_map_with_scans(trajectory, scan_data, title='Map with LiDAR Scans', dow
     ax.set_title(title, fontsize=14, fontweight='bold')
     ax.legend(loc='best', fontsize=11, framealpha=0.95)
     ax.grid(True, alpha=0.3, linestyle='--')
+    ax.xaxis.set_major_locator(plt.MultipleLocator(1.0))
+    ax.yaxis.set_major_locator(plt.MultipleLocator(1.0))
     ax.set_aspect('equal')
 
     return fig
@@ -302,6 +306,8 @@ def plot_occupancy_grid(occupancy_grid, grid_info, trajectory=None,
     ax.set_ylabel('Y [m]', fontsize=13, fontweight='bold')
     ax.set_title(title, fontsize=14, fontweight='bold')
     ax.set_aspect('equal')
-    ax.grid(True, alpha=0.2, linestyle='--', color='blue', linewidth=0.5)
+    ax.xaxis.set_major_locator(plt.MultipleLocator(1.0))
+    ax.yaxis.set_major_locator(plt.MultipleLocator(1.0))
+    ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
 
     return fig

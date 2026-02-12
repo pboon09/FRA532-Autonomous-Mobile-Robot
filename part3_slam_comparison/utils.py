@@ -110,6 +110,13 @@ def plot_time_series(trajectories_ts, title='Time Series Comparison'):
 
     labels = ['X Position [m]', 'Y Position [m]', 'Heading [deg]']
 
+    # Find the earliest timestamp to use as t0
+    t0 = None
+    for traj_ts in trajectories_ts.values():
+        if len(traj_ts) > 0:
+            if t0 is None or traj_ts[0, 0] < t0:
+                t0 = traj_ts[0, 0]
+
     for i, label in enumerate(labels):
         ax = axes[i]
 
@@ -117,7 +124,8 @@ def plot_time_series(trajectories_ts, title='Time Series Comparison'):
             if len(traj_ts) == 0:
                 continue
 
-            timestamps = traj_ts[:, 0]
+            # Convert to relative time
+            timestamps = traj_ts[:, 0] - t0
             data = traj_ts[:, i+1]
 
             if i == 2:
@@ -148,14 +156,28 @@ def compute_trajectory_length(trajectory):
 def compute_drift(trajectory):
     if len(trajectory) < 2:
         return 0.0
-
     start = trajectory[0]
     end = trajectory[-1]
-
     dx = end[0] - start[0]
     dy = end[1] - start[1]
-
     return np.sqrt(dx**2 + dy**2)
+
+
+def compute_drift_metrics(trajectory):
+    if len(trajectory) < 2:
+        return {
+            'translational_error_m': 0.0,
+            'trajectory_length_m': 0.0,
+            'drift_rate_percent': 0.0
+        }
+    translational_error = compute_drift(trajectory)
+    trajectory_length = compute_trajectory_length(trajectory)
+    drift_rate = (translational_error / trajectory_length * 100.0) if trajectory_length > 0 else 0.0
+    return {
+        'translational_error_m': float(translational_error),
+        'trajectory_length_m': float(trajectory_length),
+        'drift_rate_percent': float(drift_rate)
+    }
 
 
 def compute_trajectory_errors(traj_ref, traj_test):
@@ -193,4 +215,78 @@ def compute_map_metrics(map_data):
         'known_cells': int(known),
         'occupied_percent': float(100 * occupied / total_cells) if total_cells > 0 else 0.0,
         'known_percent': float(100 * known / total_cells) if total_cells > 0 else 0.0
+    }
+
+
+def compute_common_boundary_metrics(icp_map, icp_metadata, slam_map, slam_metadata):
+    if icp_map is None or slam_map is None:
+        return None
+
+    def get_content_bounds(map_data, metadata):
+        known_mask = (map_data == 0) | (map_data == 100)
+        if not np.any(known_mask):
+            return None
+
+        rows, cols = np.where(known_mask)
+        min_row, max_row = rows.min(), rows.max()
+        min_col, max_col = cols.min(), cols.max()
+
+        min_x = metadata['origin_x'] + min_col * metadata['resolution']
+        max_x = metadata['origin_x'] + (max_col + 1) * metadata['resolution']
+        min_y = metadata['origin_y'] + min_row * metadata['resolution']
+        max_y = metadata['origin_y'] + (max_row + 1) * metadata['resolution']
+
+        return [min_x, max_x, min_y, max_y]
+
+    icp_bounds = get_content_bounds(icp_map, icp_metadata)
+    slam_bounds = get_content_bounds(slam_map, slam_metadata)
+
+    if icp_bounds is None or slam_bounds is None:
+        return None
+
+    common_bounds = [
+        min(icp_bounds[0], slam_bounds[0]),
+        max(icp_bounds[1], slam_bounds[1]),
+        min(icp_bounds[2], slam_bounds[2]),
+        max(icp_bounds[3], slam_bounds[3])
+    ]
+
+    resolution = min(icp_metadata['resolution'], slam_metadata['resolution'])
+    common_width = int(np.ceil((common_bounds[1] - common_bounds[0]) / resolution))
+    common_height = int(np.ceil((common_bounds[3] - common_bounds[2]) / resolution))
+    common_total_cells = common_width * common_height
+
+    def count_known_in_bounds(map_data, metadata, bounds, res):
+        count = 0
+        for row in range(map_data.shape[0]):
+            for col in range(map_data.shape[1]):
+                if map_data[row, col] == 0 or map_data[row, col] == 100:
+                    x = metadata['origin_x'] + col * metadata['resolution']
+                    y = metadata['origin_y'] + row * metadata['resolution']
+                    if bounds[0] <= x < bounds[1] and bounds[2] <= y < bounds[3]:
+                        count += 1
+        return count
+
+    icp_known_in_common = count_known_in_bounds(icp_map, icp_metadata, common_bounds, resolution)
+    slam_known_in_common = count_known_in_bounds(slam_map, slam_metadata, common_bounds, resolution)
+
+    return {
+        'common_boundary': {
+            'min_x': float(common_bounds[0]),
+            'max_x': float(common_bounds[1]),
+            'min_y': float(common_bounds[2]),
+            'max_y': float(common_bounds[3]),
+            'width': common_width,
+            'height': common_height,
+            'total_cells': common_total_cells,
+            'resolution': float(resolution)
+        },
+        'icp': {
+            'known_cells_in_common': int(icp_known_in_common),
+            'coverage_percent': float(100 * icp_known_in_common / common_total_cells) if common_total_cells > 0 else 0.0
+        },
+        'slam': {
+            'known_cells_in_common': int(slam_known_in_common),
+            'coverage_percent': float(100 * slam_known_in_common / common_total_cells) if common_total_cells > 0 else 0.0
+        }
     }

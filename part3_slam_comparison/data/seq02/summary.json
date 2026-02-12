@@ -3,23 +3,47 @@
   "methods": {
     "Wheel": {
       "num_poses": 4775,
-      "drift_from_start_m": 1.3105396918998047,
-      "trajectory_length_m": 59.70533291674328
+      "final_pose": {
+        "x": 0.3199986637801222,
+        "y": -1.270871802828189,
+        "theta_deg": 47.82728837664714
+      },
+      "translational_error_m": 1.3105396918998047,
+      "trajectory_length_m": 59.70533291674328,
+      "drift_rate_percent": 2.1950127867594347
     },
     "EKF": {
       "num_poses": 4773,
-      "drift_from_start_m": 2.902364108043789,
-      "trajectory_length_m": 59.60731022722616
+      "final_pose": {
+        "x": 2.7720475275616723,
+        "y": -0.8599243691162834,
+        "theta_deg": 37.530254855341056
+      },
+      "translational_error_m": 2.902364108043789,
+      "trajectory_length_m": 59.60731022722616,
+      "drift_rate_percent": 4.869141212679832
     },
     "ICP": {
       "num_poses": 205,
-      "drift_from_start_m": 5.682837069930068,
-      "trajectory_length_m": 58.21055089431448
+      "final_pose": {
+        "x": 5.546729267231578,
+        "y": 1.2362975367637028,
+        "theta_deg": 11.453700260457763
+      },
+      "translational_error_m": 5.682837069930068,
+      "trajectory_length_m": 58.21055089431448,
+      "drift_rate_percent": 9.762555039631346
     },
     "SLAM": {
       "num_poses": 6278,
-      "drift_from_start_m": 6.343948849641396,
-      "trajectory_length_m": 62.12245536593072
+      "final_pose": {
+        "x": 6.330157457390832,
+        "y": 0.4180832112219105,
+        "theta_deg": 5.105209640085637
+      },
+      "translational_error_m": 6.343948849641396,
+      "trajectory_length_m": 62.12245536593072,
+      "drift_rate_percent": 10.21200596832905
     }
   },
   "comparisons": {
@@ -51,5 +75,25 @@
     "known_cells": 80925,
     "occupied_percent": 1.1724856696195936,
     "known_percent": 20.671765318946754
+  },
+  "common_boundary_comparison": {
+    "common_boundary": {
+      "min_x": -4.149999926239252,
+      "max_x": 18.2000004068017,
+      "min_y": -15.749999926239255,
+      "max_y": 4.600000376999375,
+      "width": 447,
+      "height": 407,
+      "total_cells": 181929,
+      "resolution": 0.05000000074505806
+    },
+    "icp": {
+      "known_cells_in_common": 80925,
+      "coverage_percent": 44.48163844136999
+    },
+    "slam": {
+      "known_cells_in_common": 41167,
+      "coverage_percent": 22.628058198528
+    }
   }
 }

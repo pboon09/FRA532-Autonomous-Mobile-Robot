@@ -1,6 +1,24 @@
 {
   "sequence": "seq00",
   "methods": {
+    "Wheel": {
+      "final_pose": {
+        "x": 2.728413814163539,
+        "y": -3.3976000765199372,
+        "theta_deg": 37.857194224578926
+      },
+      "heading_deviation_from_imu_deg": 2.9261412350183837,
+      "trajectory_length_m": 55.42378070667344
+    },
+    "EKF": {
+      "final_pose": {
+        "x": -0.25240323932766995,
+        "y": -3.2350992567135197,
+        "theta_deg": 34.93523117148636
+      },
+      "heading_deviation_from_imu_deg": 0.004178181925813111,
+      "trajectory_length_m": 55.42373246128699
+    },
     "Point-to-Point": {
       "num_keyframes": 195,
       "final_pose": {
@@ -8,9 +26,10 @@
         "y": 0.0794999784459694,
         "theta_deg": 4.950554036901929
       },
-      "avg_runtime_ms": 2.079798529545466,
-      "std_runtime_ms": 0.8174179041119486,
-      "total_runtime_s": 0.3993213176727295,
+      "heading_deviation_from_imu_deg": 29.980498952658614,
+      "avg_runtime_ms": 2.0242109894752502,
+      "std_runtime_ms": 0.8032869387988205,
+      "total_runtime_s": 0.38864850997924805,
       "avg_fitness": 0.9862615291061504,
       "std_fitness": 0.07281504849219393,
       "avg_rmse": 0.060409997536881144,

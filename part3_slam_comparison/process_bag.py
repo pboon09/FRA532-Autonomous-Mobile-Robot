@@ -7,9 +7,10 @@ from rosbag2_py import SequentialReader, StorageOptions, ConverterOptions
 from rclpy.serialization import deserialize_message
 from nav_msgs.msg import Odometry, OccupancyGrid
 from tf2_msgs.msg import TFMessage
+from sensor_msgs.msg import Imu
 from tf_transformations import euler_from_quaternion
 import math
-from utils import save_json, compute_trajectory_length, compute_drift, compute_trajectory_errors, compute_map_metrics
+from utils import save_json, compute_drift_metrics, compute_trajectory_errors, compute_map_metrics
 
 
 class BagProcessor:
@@ -19,12 +20,14 @@ class BagProcessor:
         self.ekf_data = []
         self.icp_data = []
         self.slam_data = []
+        self.imu_data = []
         self.slam_map = None
         self.slam_map_metadata = None
         self.icp_map = None
         self.icp_map_metadata = None
         self.map_to_odom_buffer = []
         self.odom_to_base_buffer = []
+        self.imu_offset = None
 
     def process(self):
         storage_options = StorageOptions(uri=self.bag_path, storage_id='sqlite3')
@@ -52,6 +55,10 @@ class BagProcessor:
                 msg = deserialize_message(data, Odometry)
                 self.icp_data.append(self._parse_odometry(msg, timestamp))
 
+            elif topic == '/imu':
+                msg = deserialize_message(data, Imu)
+                self._parse_imu(msg, timestamp)
+
             elif topic == '/tf':
                 msg = deserialize_message(data, TFMessage)
                 self._buffer_transforms(msg, timestamp)
@@ -77,6 +84,21 @@ class BagProcessor:
             'y': msg.pose.pose.position.y,
             'theta': yaw
         }
+
+    def _parse_imu(self, msg, timestamp):
+        q = msg.orientation
+        _, _, yaw = euler_from_quaternion([q.x, q.y, q.z, q.w])
+
+        if self.imu_offset is None:
+            self.imu_offset = yaw
+
+        corrected_yaw = yaw - self.imu_offset
+        corrected_yaw = math.atan2(math.sin(corrected_yaw), math.cos(corrected_yaw))
+
+        self.imu_data.append({
+            'timestamp': timestamp * 1e-9,
+            'yaw': corrected_yaw
+        })
 
     def _buffer_transforms(self, msg, timestamp):
         for transform in msg.transforms:
@@ -202,13 +224,28 @@ class BagProcessor:
             'SLAM': slam_array
         }
 
+        final_imu_yaw = None
+        if len(self.imu_data) > 0:
+            final_imu_yaw = self.imu_data[-1]['yaw']
+
         for name, traj_array in trajectories.items():
             if len(traj_array) > 0:
+                drift_metrics = compute_drift_metrics(traj_array)
                 summary['methods'][name] = {
                     'num_poses': len(traj_array),
-                    'drift_from_start_m': float(compute_drift(traj_array)),
-                    'trajectory_length_m': float(compute_trajectory_length(traj_array))
+                    'final_pose': {
+                        'x': float(traj_array[-1][0]),
+                        'y': float(traj_array[-1][1]),
+                        'theta_deg': float(math.degrees(traj_array[-1][2]))
+                    },
+                    **drift_metrics
                 }
+
+                if final_imu_yaw is not None:
+                    final_heading = traj_array[-1][2]
+                    heading_dev = abs(math.atan2(math.sin(final_heading - final_imu_yaw),
+                                                 math.cos(final_heading - final_imu_yaw)))
+                    summary['methods'][name]['heading_deviation_from_imu_deg'] = math.degrees(heading_dev)
 
         if len(slam_array) > 0:
             for name, traj_array in trajectories.items():
@@ -229,6 +266,15 @@ class BagProcessor:
             icp_metrics = compute_map_metrics(self.icp_map)
             if icp_metrics:
                 summary['icp_map_metrics'] = icp_metrics
+
+        if self.slam_map is not None and self.icp_map is not None:
+            from utils import compute_common_boundary_metrics
+            common_metrics = compute_common_boundary_metrics(
+                self.icp_map, self.icp_map_metadata,
+                self.slam_map, self.slam_map_metadata
+            )
+            if common_metrics:
+                summary['common_boundary_comparison'] = common_metrics
 
         save_json(summary, seq_dir / 'summary.json')
 
@@ -258,7 +304,9 @@ def main():
 
     print(f'\nSummary:')
     for method, info in summary['methods'].items():
-        print(f'  {method}: {info["num_poses"]} poses, drift: {info["drift_from_start_m"]:.3f}m, length: {info["trajectory_length_m"]:.3f}m')
+        print(f'  {method}: {info["num_poses"]} poses, '
+              f'drift: {info["drift_rate_percent"]:.2f}%, '
+              f'length: {info["trajectory_length_m"]:.3f}m')
 
     print(f'\nDone! Files saved to {data_dir}/')
 

@@ -130,14 +130,13 @@ class Experiment:
         wheel_heading_rmse = compute_heading_rmse(wheel_theta, imu_corrected)
         ekf_heading_rmse = compute_heading_rmse(ekf_theta, imu_corrected)
 
-        bag_name = os.path.basename(self.bag_path)
-
         fig = plot_trajectory(wheel_x, wheel_y, ekf_x, ekf_y,
                               f'{self.sequence_name}: Trajectory Comparison')
         save_figure(fig, self.seq_dir / 'trajectory.png')
 
         fig = plot_time_series_combined(times, wheel_x, wheel_y, wheel_theta,
-                                        ekf_x, ekf_y, ekf_theta, imu_corrected, bag_name)
+                                        ekf_x, ekf_y, ekf_theta, imu_corrected,
+                                        f'{self.sequence_name}: Time Series Comparison')
         save_figure(fig, self.seq_dir / 'time_series.png')
 
         fig = plot_innovation_analysis(times, innovations,
