@@ -1021,11 +1021,11 @@ This section evaluates the ICP odometry pipeline using recorded bag files from a
 #### 2.8.1 Performance Metrics
 
 **Dataset:**
-| Sequence | Description | Trajectory | Keyframes |
-|----------|-------------|------------|-----------|
-| seq00 | Empty hallway (baseline) | 70.3m | 10,504 |
-| seq01 | Non-empty hallway with sharp turns | 57.7m | 7,854 |
-| seq02 | Non-empty hallway with smooth motion | 72.4m | 11,975 |
+| Sequence | Description | Duration | Samples |
+|----------|-------------|----------|---------|
+| seq00 | Empty hallway | 525s | 10,504 |
+| seq01 | Non-empty hallway with sharp turns | 393s | 7,854 |
+| seq02 | Non-empty hallway with non-aggressive motion | 599s | 11,975 |
 
 **Evaluation Metrics:**
 
@@ -1385,11 +1385,11 @@ This section demonstrates SLAM performance using slam_toolbox with online asynch
 #### 3.5.1 Performance Metrics
 
 **Dataset:**
-| Sequence | Description | Trajectory | Keyframes |
-|----------|-------------|------------|-----------|
-| seq00 | Empty hallway (baseline) | 58.69m | 10,504 |
-| seq01 | Non-empty hallway with sharp turns | 58.86m | 7,854 |
-| seq02 | Non-empty hallway with smooth motion | 62.12m | 11,975 |
+| Sequence | Description | Duration | Samples |
+|----------|-------------|----------|---------|
+| seq00 | Empty hallway | 525s | 10,504 |
+| seq01 | Non-empty hallway with sharp turns | 393s | 7,854 |
+| seq02 | Non-empty hallway with non-aggressive motion | 599s | 11,975 |
 
 **Evaluation Metrics:**
 
