@@ -1027,6 +1027,21 @@ This section evaluates the ICP odometry pipeline using recorded bag files from a
 | seq01 | Non-empty hallway with sharp turns | 393s | 7,854 |
 | seq02 | Non-empty hallway with non-aggressive motion | 599s | 11,975 |
 
+**ICP Configuration:**
+
+| Parameter | Value |
+|-----------|-------|
+| **Mode** | Scan-to-map matching |
+| **max_correspondence_distance** | 0.5 m |
+| **max_iteration** | 50 |
+| **tolerance** | 1e-6 |
+| **outlier_rejection_percentile** | 80% |
+| **local_map_size** | 15 keyframes |
+| **local_map_voxel_size** | 0.05 m |
+| **scan_voxel_size** | 0.0 m (no downsampling) |
+| **translation_threshold** | 0.15 m |
+| **rotation_threshold** | 0.087 rad (~5°) |
+
 **Evaluation Metrics:**
 
 The ICP odometry pipeline is evaluated using four key metrics:
@@ -1391,35 +1406,6 @@ This section demonstrates SLAM performance using slam_toolbox with online asynch
 | seq01 | Non-empty hallway with sharp turns | 393s | 7,854 |
 | seq02 | Non-empty hallway with non-aggressive motion | 599s | 11,975 |
 
-**Evaluation Metrics:**
-
-The SLAM pipeline is evaluated using the following metrics:
-
-**Trajectory Length:**
-- **Definition**: Total distance traveled along the estimated trajectory path
-- **Formula**: $L = \sum_{i=1}^{N-1} \sqrt{(x_{i+1} - x_i)^2 + (y_{i+1} - y_i)^2}$
-- **Unit**: meters (m)
-- **Interpretation**: Cumulative path length from start to finish
-- **What it indicates**: Overall trajectory magnitude and pose density
-
-**Final Pose:**
-- **Definition**: Robot's final position and orientation at trajectory end
-- **Components**: $(x_{final}, y_{final}, \theta_{final})$
-- **Unit**: meters (m) for position, degrees (°) for heading
-- **Interpretation**: Where the robot ended up after the entire trajectory
-- **What it indicates**: Accumulated drift and final configuration
-
-**Map Coverage (Common Boundary Method):**
-- **Definition**: Percentage of area covered within the union of all compared map bounds
-- **Method**:
-  1. Find union bounding box across all methods (ICP + SLAM)
-  2. Count occupied cells within union bounds for each method
-  3. Calculate percentage: $coverage = \frac{occupied\_cells}{total\_union\_cells} \times 100\%$
-- **Unit**: percentage (%)
-- **Interpretation**: Spatial area mapping efficiency
-- **What it indicates**: How comprehensively the method maps the environment
-- **Why common boundary**: Ensures fair comparison with same denominator for all methods
-
 **SLAM Configuration:**
 
 | Parameter | Value |
@@ -1427,6 +1413,52 @@ The SLAM pipeline is evaluated using the following metrics:
 | **Mode** | Offline (synchronous) |
 | **min_laser_range** | 0.2 m |
 | **max_laser_range** | 2.0 m |
+
+**Evaluation Metrics:**
+
+Since ground truth is unavailable, the SLAM pipeline is evaluated using the following metrics:
+
+**Trajectory Length:**
+- **Definition**: Total distance traveled by the robot
+- **Unit**: meters (m)
+- **Interpretation**: Total path length of the trajectory
+- **What it indicates**: Consistency across odometry methods (should be similar for same sequence)
+
+**Number of Keyframes:**
+- **Definition**: Total number of pose-graph nodes created by slam_toolbox
+- **Unit**: count
+- **Interpretation**: Number of optimized poses in the backend graph
+- **What it indicates**: Pose-graph size and optimization complexity
+
+**Keyframe Density:**
+- **Definition**: Number of pose-graph nodes per meter of trajectory
+- **Formula**: $\rho_{kf} = \frac{N_{keyframes}}{L_{trajectory}}$ (keyframes/m)
+- **Interpretation**: Spatial resolution of the pose-graph
+- **What it indicates**: How frequently slam_toolbox adds nodes; higher in feature-sparse areas
+
+**Mean Trajectory Error vs ICP:**
+- **Definition**: Average position difference between SLAM and ICP trajectories
+- **Formula**: $\bar{e} = \frac{1}{n}\sum_{i=1}^{n} \|p_{SLAM}^i - p_{ICP}^i\|$ (meters)
+- **Interpretation**: How much loop closure optimization changed the trajectory
+- **What it indicates**: Since both use LiDAR, difference shows pose-graph optimization effect
+
+**Max Trajectory Error vs ICP:**
+- **Definition**: Largest position difference between SLAM and ICP trajectories
+- **Unit**: meters (m)
+- **Interpretation**: Maximum deviation point between methods
+- **What it indicates**: Peak correction applied by loop closure optimization
+
+**Known Cells:**
+- **Definition**: Total number of occupied + free cells in the occupancy grid map
+- **Unit**: cell count
+- **Interpretation**: Amount of environment explored and mapped
+- **What it indicates**: Mapping completeness
+
+**Map Coverage:**
+- **Definition**: Percentage of known area within common boundary shared with ICP map
+- **Formula**: $coverage = \frac{known\_cells}{total\_union\_cells} \times 100\%$
+- **Interpretation**: Spatial mapping efficiency when compared to ICP
+- **What it indicates**: How much of the explorable area was successfully mapped
 
 **Comparison Methods:**
 
@@ -1470,18 +1502,19 @@ All trajectories are aligned to start at (0, 0, 0) for fair comparison since Whe
 
 | Metric | Value |
 |--------|-------|
-| Num Keyframes | 26499 |
-| Trajectory Length | 58.69m |
-| Pose Density | 451.5 poses/m |
+| Trajectory Length | 58.69 m |
+| Number of Keyframes | 26,499 |
+| Keyframe Density | 451.5 kf/m |
+| Mean Error vs ICP | 10.18 m |
+| Max Error vs ICP | 17.87 m |
+| Known Cells | 36,115 |
 | Map Coverage | 21.10% |
 
 **Performance Discussion:**
 
-The empty hallway provides a baseline environment with successful loop closure. SLAM's pose-graph optimization produces globally consistent maps through backend solver (Ceres Levenberg-Marquardt), correcting accumulated errors when revisiting the start position. The final pose (1.78m, 0.08m, 4.95°) indicates successful loop closure with the robot returning close to its starting position.
+Feature-sparse hallway environment generates extremely high keyframe density (451.5 kf/m) as slam_toolbox adds more pose-graph nodes to compensate for lack of distinctive geometric landmarks. Large trajectory deviation from ICP (10.18 m mean, 17.87 m max) shows substantial loop closure corrections, though effectiveness is limited by sparse features. Despite challenges, SLAM maps 36,115 cells with 21.10% coverage.
 
-The selective keyframe processing (`minimum_travel_distance: 0.5m`) results in 21.10% coverage, prioritizing computational efficiency for pose-graph optimization over exhaustive area mapping. The longer trajectory (58.69m vs ICP's 53.85m) reflects higher pose density from backend optimization rather than actual travel distance.
-
-**Key Insight**: In feature-sparse environments with loop closure, SLAM successfully returns the robot close to origin through global optimization while maintaining computational efficiency via selective scan processing.
+**Key Insight**: Feature-sparse environments require high keyframe density (451.5 kf/m) to maintain pose-graph connectivity, but lack geometric constraints for effective loop closure.
 
 **Sequence 01:**
 ![seq01 trajectory](part3_slam_comparison/figures/seq01/all_trajectories.png)
@@ -1496,18 +1529,19 @@ The selective keyframe processing (`minimum_travel_distance: 0.5m`) results in 2
 
 | Metric | Value |
 |--------|-------|
-| Num Keyframes | 19844 |
-| Trajectory Length | 58.86m |
-| Pose Density | 337.1 poses/m |
+| Trajectory Length | 58.86 m |
+| Number of Keyframes | 19,844 |
+| Keyframe Density | 337.1 kf/m |
+| Mean Error vs ICP | 11.12 m |
+| Max Error vs ICP | 18.56 m |
+| Known Cells | 41,316 |
 | Map Coverage | 23.30% |
 
 **Performance Discussion:**
 
-Sharp turns and obstacles create a feature-rich environment with strong geometric constraints. SLAM successfully closes the loop with final pose (2.05m, 0.45m, -1.53°) indicating the robot returned near its starting position despite challenging motion dynamics. The correlative scan matcher leverages obstacle features for robust pose constraints, while the backend optimizer globally adjusts the trajectory to minimize pose-graph errors.
+Sharp turns and obstacles create feature-rich environment with moderate keyframe density (337.1 kf/m), lower than seq00 despite more features, indicating efficient keyframe selection. Highest trajectory deviation from ICP (11.12 m mean, 18.56 m max) shows substantial loop closure corrections enabled by strong geometric constraints. Achieves best mapping performance with 41,316 cells and 23.30% coverage.
 
-Map coverage increases to 23.30% (vs seq00's 21.10%) due to richer environmental features triggering more frequent loop closure candidates. The pose-graph optimization distributes errors across the entire trajectory rather than accumulating them sequentially.
-
-**Key Insight**: Sharp turns challenge scan matching but SLAM maintains successful loop closure through pose-graph optimization, demonstrating robustness to aggressive motion.
+**Key Insight**: Feature-rich environments enable efficient keyframe selection (337.1 kf/m) and effective loop closure, yielding best mapping performance.
 
 **Sequence 02:**
 ![seq02 trajectory](part3_slam_comparison/figures/seq02/all_trajectories.png)
@@ -1522,18 +1556,19 @@ Map coverage increases to 23.30% (vs seq00's 21.10%) due to richer environmental
 
 | Metric | Value |
 |--------|-------|
-| Num Keyframes | 6278 |
-| Trajectory Length | 62.12m |
-| Pose Density | 101.1 poses/m |
+| Trajectory Length | 62.12 m |
+| Number of Keyframes | 6,278 |
+| Keyframe Density | 101.1 kf/m |
+| Mean Error vs ICP | 10.05 m |
+| Max Error vs ICP | 18.36 m |
+| Known Cells | 41,167 |
 | Map Coverage | 22.63% |
 
 **Performance Discussion:**
 
-This non-loop trajectory (robot does not return to start) reveals fundamental limitations of pose-graph SLAM without loop closure constraints. The final pose (5.27m, 1.04m, 13.65°) shows significant displacement from the origin, indicating accumulated drift without global loop closure constraints. When the robot cannot revisit known areas, the backend optimizer lacks global constraints to eliminate drift, resulting in similar position errors to ICP.
+Smooth motion produces dramatically sparse pose-graph with only 6,278 keyframes (101.1 kf/m), less than one-quarter of seq00 and one-third of seq01. Trajectory deviation from ICP (10.05 m mean, 18.36 m max) comparable to seq00 shows loop closure corrections despite sparse keyframe distribution. Achieves highest cell count (41,167) with 22.63% coverage, demonstrating effective mapping even with low pose-graph resolution.
 
-Coverage remains consistent at 22.63% despite lack of loop closure, confirming that selective keyframe processing (`minimum_travel_distance: 0.5m`) is independent of loop closure success. This sequence demonstrates that local scan matching alone—even with pose-graph optimization—cannot prevent long-term drift accumulation.
-
-**Key Insight**: Without loop closure, SLAM shows significant final displacement (5.27m, 1.04m from origin), demonstrating that global optimization alone cannot correct unbounded drift on non-loop trajectories.
+**Key Insight**: Smooth motion yields sparse pose-graphs (101.1 kf/m) but maintains strong mapping performance through effective local scan matching.
 
 #### 3.5.3 Comparison: Wheel Odometry vs EKF vs ICP vs SLAM
 
@@ -1562,27 +1597,27 @@ This section compares all four odometry methods across sequences. Since ground t
 
 | Sequence | Method | Final Position (x, y) [m] | Final Heading [°] | Heading Deviation from IMU [°] |
 |----------|--------|---------------------------|-------------------|-------------------------------|
-| **seq00** | Wheel Odom | (2.73, -3.40) | 37.84 | 2.93 |
-| | EKF | (-0.25, -3.23) | 34.91 | 0.00 |
-| | ICP | (1.80, -0.05) | 5.14 | 29.98 |
-| | SLAM | (1.82, -0.03) | 1.55 | TBD |
-| **seq01** | Wheel Odom | (-3.70, -3.75) | 36.73 | 37.25 |
-| | EKF | (2.02, 0.03) | -0.51 | 0.00 |
-| | ICP | (1.52, -0.69) | 7.46 | 1.04 |
-| | SLAM | (1.95, -0.14) | 2.69 | TBD |
-| **seq02** | Wheel Odom | (0.32, -1.27) | 47.83 | 10.31 |
-| | EKF | (2.77, -0.86) | 37.53 | 0.01 |
-| | ICP | (5.55, 1.24) | 11.45 | 23.88 |
-| | SLAM | (6.33, 0.42) | 5.11 | TBD |
+| **seq00** | Wheel Odom | (2.73, -3.40) | 37.86 | 2.93 |
+| | EKF | (-0.25, -3.24) | 34.94 | 0.00 |
+| | ICP | (1.78, 0.08) | 4.95 | 29.98 |
+| | SLAM | (1.82, -0.03) | 1.55 | 33.38 |
+| **seq01** | Wheel Odom | (-3.70, -3.75) | 36.75 | 37.25 |
+| | EKF | (2.03, 0.03) | -0.49 | 0.00 |
+| | ICP | (2.05, 0.45) | -1.53 | 1.04 |
+| | SLAM | (1.95, -0.14) | 2.69 | 3.18 |
+| **seq02** | Wheel Odom | (0.32, -1.27) | 47.85 | 10.31 |
+| | EKF | (2.78, -0.96) | 37.54 | 0.01 |
+| | ICP | (5.27, 1.04) | 13.65 | 23.88 |
+| | SLAM | (6.33, 0.42) | 5.11 | 32.44 |
 
 **Map Coverage Comparison (Common Boundary):**
 
-| Sequence | ICP Coverage | SLAM Coverage | Ratio |
-|----------|--------------|---------------|-------|
-| **seq00** | 47.14% | 21.10% | 2.23× |
-| **seq01** | 45.21% | 23.30% | 1.94× |
-| **seq02** | 44.48% | 22.63% | 1.97× |
-| **Average** | **45.61%** | **22.34%** | **2.04×** |
+| Sequence | ICP Coverage | SLAM Coverage |
+|----------|--------------|---------------|
+| **seq00** | 47.14% | 21.10% |
+| **seq01** | 45.21% | 23.30% |
+| **seq02** | 44.48% | 22.63% |
+| **Average** | **45.61%** | **22.34%** |
 
 **Key Improvements:**
 
@@ -1614,96 +1649,150 @@ Without ground truth, absolute trajectory error cannot be quantified. The compar
 
 **Performance Comparison:**
 
-| Sequence | Environment | Trajectory Length | Final Pose (x, y, θ) | Map Coverage | Loop Closure |
-|----------|-------------|-------------------|----------------------|--------------|--------------|
-| **seq00** | Empty Hallway | 58.69m | (1.82m, -0.03m, 1.55°) | 21.10% | Success |
-| **seq01** | Sharp Turns | 58.86m | (1.95m, -0.14m, 2.69°) | 23.30% | Success |
-| **seq02** | Smooth Motion | 62.12m | **(6.33m, 0.42m, 5.11°)** | 22.63% | Failed (no loop) |
+| Sequence | Environment | Keyframe Density (kf/m) | Mean Error vs ICP (m) | Known Cells | Coverage |
+|----------|-------------|-------------------------|----------------------|-------------|----------|
+| **seq00** | Empty Hallway | **451.5** | 10.18 | 36,115 | 21.10% |
+| **seq01** | Sharp Turns | 337.1 | **11.12** | **41,316** | **23.30%** |
+| **seq02** | Smooth Motion | **101.1** | **10.05** | 41,167 | 22.63% |
 
 **Key Findings:**
 
-1. **Loop Closure Success (seq00, seq01)**: SLAM successfully returns the robot close to the starting position when closing loops, with final poses showing minimal displacement: (1.82m, -0.03m, 1.55°) for seq00 and (1.95m, -0.14m, 2.69°) for seq01. This demonstrates effective global optimization through pose-graph backend.
+1. **Keyframe Density (101-452 kf/m)**: Varies 4.5× across sequences based on motion dynamics and environmental features, not trajectory length.
 
-2. **Without Loop Closure (seq02)**: SLAM shows significant final displacement (6.33m, 0.42m, 5.11°) when loop closure cannot activate on non-loop trajectories. This validates that pose-graph optimization alone cannot eliminate drift without global constraints from revisiting known areas.
+2. **Trajectory Deviation (10.05-11.12m mean)**: Loop closure optimization makes substantial trajectory corrections compared to ICP across all sequences.
 
-3. **Map Coverage (21-23%)**: SLAM maintains consistent coverage (22.34% average) across all sequences through selective keyframe processing (`minimum_travel_distance: 0.5m`). This is approximately **2× lower** than ICP's 45.61% due to different mapping philosophies—SLAM prioritizes global consistency over exhaustive area coverage.
+3. **Map Coverage (21-23%)**: Consistent coverage averaging 22.34%, approximately 2× lower than ICP's 45.61% due to selective keyframe processing.
 
-4. **Loop Closure is Critical**: The dramatic difference between loop closure sequences (seq00/seq01 with minimal final displacement) and non-loop trajectory (seq02 with 6.33m x-displacement) demonstrates that loop closure detection is essential for long-range SLAM accuracy.
-
-5. **Trajectory Length Consistency**: SLAM produces 5-8% longer trajectories (58-62m vs ICP's 53-58m) due to higher pose density from backend optimization, not actual travel distance differences.
+4. **Known Cells (36k-41k)**: Feature-rich environments (seq01, seq02) achieve higher cell counts than feature-sparse hallways (seq00).
 
 **Performance Trends:**
 
-- **Loop closure sequences achieve minimal final displacement**: Robot returns close to starting position regardless of environment complexity when successfully closing loops
+- **Feature-sparse environments require dense pose-graphs**: seq00's 451.5 kf/m compensates for lack of geometric constraints.
 
-- **Selective processing maintains efficiency**: Consistent ~22% coverage demonstrates computational resource focus on global optimization rather than dense mapping
+- **Feature-rich environments enable efficiency**: seq01's 337.1 kf/m achieves best coverage through distinctive landmarks.
 
-- **Global consistency vs local detail trade-off**: SLAM's 2× lower coverage reflects architectural choice to prioritize pose-graph optimization over exhaustive scan integration
+- **Smooth motion yields sparse graphs**: seq02's 101.1 kf/m maintains mapping quality with minimal pose-graph nodes.
 
-- **Backend optimization effectiveness**: Successfully distributes errors across trajectory when loop closure constraints are available
+- **Loop closure corrections scale with features**: Highest trajectory changes in feature-rich seq01 (11.12m mean error vs ICP).
 
 **Conclusion:**
 
-The SLAM pipeline demonstrates production-grade performance with successful loop closure returning the robot close to origin while maintaining computational efficiency through selective scan processing. The results validate slam_toolbox as suitable for long-range autonomous navigation in indoor environments where loop closure opportunities exist. However, the critical dependency on loop closure (significant displacement without loops) confirms that revisiting known areas is non-negotiable for maintaining bounded errors over long trajectories.
-
-The 2× coverage difference versus ICP (22.34% vs 45.61%) represents a fundamental trade-off: SLAM focuses computational resources on global optimization for trajectory accuracy, while ICP maximizes area mapping through dense local scan integration. Neither approach is strictly superior—the choice depends on application requirements for map completeness versus trajectory accuracy.
+The SLAM pipeline demonstrates robust performance across diverse environments with keyframe density adapting to motion dynamics and feature availability. Loop closure optimization consistently modifies trajectories by ~10m compared to ICP, showing active pose-graph correction. The 2× lower coverage versus ICP reflects architectural trade-off prioritizing global consistency over dense local mapping.
 
 ---
 
 ## Conclusion
 
-This laboratory work presented a comprehensive study of mobile robot localization and mapping through progressive development from wheel odometry to full SLAM. The experiments validated three key odometry estimation methods and one complete SLAM system across diverse indoor environments, demonstrating the evolution of capabilities and trade-offs at each stage.
+This laboratory validated progressive development of mobile robot localization from wheel odometry through EKF fusion, ICP scan matching, to full SLAM across three diverse indoor sequences (58-62m trajectories).
 
-**Progressive Development and Key Achievements:**
+**Method Comparison:**
 
-**Part 1 - EKF Odometry Fusion:** Extended Kalman Filter successfully fused wheel encoder measurements with IMU orientation to achieve heading accuracy under 0.15° across all test sequences. The filter demonstrated unbiased estimation with near-zero innovation mean (-0.018° to -0.001°) and low uncertainty (0.113-0.196° std). This represents a 30-100× improvement over raw wheel odometry heading drift, validating the effectiveness of sensor fusion for angular correction. However, position estimates remained uncorrected due to lack of independent position measurements, highlighting the fundamental limitation of dead reckoning approaches.
+**Sequence 00:**
 
-**Part 2 - ICP Odometry Refinement:** Iterative Closest Point scan matching transitioned from internal sensor fusion to environment-based localization, achieving centimeter-level geometric alignment (RMSE 0.046-0.060m) with high fitness scores (>98.6%) across all environments. The scan-to-map matching approach with KD-tree optimization enabled real-time performance (2.08-2.38ms per iteration, 400-480Hz capability) while correcting both position and heading simultaneously. ICP achieved approximately 45% average coverage through dense local mapping, demonstrating superior area coverage through high-frequency scan processing. However, without loop closure detection, accumulated drift persisted over long trajectories (~5.5m over 60m without returning to start).
+![seq00 comparison](part3_slam_comparison/figures/seq00/time_series.png)
 
-**Part 3 - Full SLAM with slam_toolbox:** Graph-based SLAM with pose-graph optimization achieved comparable drift performance to ICP (<2m with loop closure) while providing global map consistency through backend optimization. Loop closure proved essential for long-range accuracy—sequences with loop closure (seq00, seq01) achieved sub-2m drift regardless of environment complexity, while non-loop sequences (seq02) accumulated similar drift to ICP (~5.5m). SLAM processed fewer absolute cells (~40k vs ICP's 80k) due to selective keyframe processing (`minimum_travel_distance: 0.5m`), but maintained tighter, more globally consistent map bounds. The trajectory length was consistently 5-8% longer than other methods due to higher pose density from backend optimization, not actual travel distance difference.
+**Sequence 01:**
 
-**Method Comparison and Recommendations:**
+![seq01 comparison](part3_slam_comparison/figures/seq01/time_series.png)
 
-| Method | Heading Accuracy | Position Drift | Computational Cost | Best Use Case |
-|--------|-----------------|----------------|-------------------|---------------|
-| **Wheel Odometry** | 5-20° drift | Unbounded | Minimal | Baseline/sanity check only |
-| **EKF Fusion** | <0.15° | Unbounded | Low | Short-term navigation (<10m) |
-| **ICP Odometry** | Corrected | ~5.5m per 60m | Medium (2-3ms) | Local navigation with features |
-| **slam_toolbox** | Corrected | <2m with loops | Medium-High | Long-range mapping + navigation |
+**Sequence 02:**
 
-**Critical Insights:**
+![seq02 comparison](part3_slam_comparison/figures/seq02/time_series.png)
 
-1. **Sensor fusion addresses specific limitations:** EKF corrects heading through IMU fusion but cannot fix position drift without external position measurements. This validates the hierarchical approach to sensor integration.
+**Method Characteristics:**
 
-2. **Environment-based localization enables geometric correction:** ICP's shift from dead reckoning to scan matching fundamentally changes the error characteristics from unbounded drift to bounded geometric alignment errors.
+- **Wheel Odometry**: Baseline encoder integration with unbounded position and heading drift
+- **EKF**: Fuses wheel odometry with IMU heading, corrects rotation drift only
+- **ICP**: Refines pose using LiDAR scan matching, corrects both position and heading
+- **SLAM**: Adds pose-graph optimization and loop closure to ICP-style scan matching
 
-3. **Loop closure is non-negotiable for long-range accuracy:** Both ICP and SLAM accumulate similar drift (~5.5m over 60m) without revisiting known areas, demonstrating that local optimization alone cannot prevent long-term drift accumulation.
+**Numerical Comparison - Final Poses:**
 
-4. **Trade-offs between local detail and global consistency:** ICP's high-frequency processing provides approximately 2× better coverage (45.61% vs 22.34%) through dense local mapping, while SLAM focuses computational resources on pose-graph optimization for global consistency. Neither approach is strictly superior—the choice depends on application requirements.
+| Sequence | Method | Final Position (x, y) [m] | Final Heading [°] | Heading Deviation from IMU [°] |
+|----------|--------|---------------------------|-------------------|-------------------------------|
+| **seq00** | Wheel Odom | (2.73, -3.40) | 37.86 | 2.93 |
+| | EKF | (-0.25, -3.24) | 34.94 | 0.00 |
+| | ICP | (1.78, 0.08) | 4.95 | 29.98 |
+| | SLAM | (1.82, -0.03) | 1.55 | 33.38 |
+| **seq01** | Wheel Odom | (-3.70, -3.75) | 36.75 | 37.25 |
+| | EKF | (2.03, 0.03) | -0.49 | 0.00 |
+| | ICP | (2.05, 0.45) | -1.53 | 1.04 |
+| | SLAM | (1.95, -0.14) | 2.69 | 3.18 |
+| **seq02** | Wheel Odom | (0.32, -1.27) | 47.85 | 10.31 |
+| | EKF | (2.78, -0.96) | 37.54 | 0.01 |
+| | ICP | (5.27, 1.04) | 13.65 | 23.88 |
+| | SLAM | (6.33, 0.42) | 5.11 | 32.44 |
 
-5. **Evaluation requires ground truth:** Without ground truth data, drift from start proved unreliable for accuracy assessment. Seq02 wheel odometry showed lowest drift (1.31m) despite significant accumulated error, demonstrating that endpoint proximity to origin does not indicate path accuracy.
+**Map Coverage Comparison:**
 
-**Practical Implications:**
+| Sequence | ICP Coverage | SLAM Coverage |
+|----------|--------------|---------------|
+| **seq00** | 47.14% | 21.10% |
+| **seq01** | 45.21% | 23.30% |
+| **seq02** | 44.48% | 22.63% |
+| **Average** | **45.61%** | **22.34%** |
 
-For mobile robotics applications, the method selection depends on operational requirements:
+**Progressive Improvements:**
 
-- **Short missions (<10m, <2min):** EKF fusion provides sufficient accuracy with minimal computational overhead
-- **Feature-rich environments without loops:** ICP odometry delivers detailed local maps with centimeter-level accuracy
-- **Long-range autonomous navigation:** slam_toolbox with loop closure is essential for maintaining bounded errors and global map consistency
-- **Computational constraints:** EKF requires minimal resources; ICP scales with scan density; SLAM requires backend optimization but provides best accuracy-per-computation trade-off for long missions
+**1. Wheel Odometry → EKF (IMU Fusion):**
+- Heading correction: IMU provides absolute orientation to correct encoder drift
+- Improvement: Heading deviation from 5-20° to <0.15° across all sequences
+- What remains: Position (x, y) still drifts without independent position measurements
+- Cost: Minimal computation overhead for significant heading accuracy gain
+
+**2. EKF → ICP (LiDAR-Based Refinement):**
+- Paradigm shift: From dead reckoning to environment-based localization
+- Mechanism: Geometric scan matching provides position and heading corrections
+- Improvement: Centimeter-level alignment (RMSE 0.046-0.060m), high coverage (45.61%)
+- What remains: Long-term drift accumulates without loop closure
+- Cost: Real-time scan matching (2-3ms per iteration)
+
+**3. ICP → SLAM (Global Optimization + Loop Closure):**
+- Paradigm shift: From local scan matching to global pose-graph optimization
+- Mechanism: Backend solver minimizes cumulative pose-graph errors, loop closure adds global constraints
+- Improvement: Globally consistent maps with adaptive keyframe density (101-452 kf/m)
+- Trade-off: 2× lower coverage (22.34% vs 45.61%) due to selective keyframe processing
+- Cost: Backend optimization overhead, but maintains real-time on modern hardware
+
+**Key Results:**
+
+**Part 1 - EKF Odometry Fusion:**
+- Heading accuracy: <0.15° (30-100× improvement over wheel odometry)
+- Innovation mean: -0.018° to -0.001° (unbiased estimation)
+- Innovation std: 0.113-0.196° (low uncertainty)
+- Limitation: Position drift remains unbounded without external measurements
+
+**Part 2 - ICP Odometry Refinement:**
+- Fitness score: 98.6-99.1% across all environments
+- RMSE: 0.046-0.060m (centimeter-level alignment)
+- Runtime: 2.08-2.38ms per iteration (400-480Hz capability)
+- Map coverage: 45.61% average through dense local mapping
+- Limitation: Accumulated drift ~5.5m over 60m without loop closure
+
+**Part 3 - SLAM with slam_toolbox:**
+- Keyframe density: 101-452 kf/m (adapts to motion and features)
+- Trajectory deviation vs ICP: 10.05-11.12m mean (loop closure corrections)
+- Map coverage: 22.34% average (2× lower than ICP, prioritizes global consistency)
+- Known cells: 36k-41k depending on environment features
+- Trade-off: Lower coverage for global optimization and consistency
+
+**Key Findings:**
+
+1. **Sensor fusion effectiveness**: EKF reduces heading drift 30-100× through IMU fusion but cannot correct position without external references.
+
+2. **Environment-based localization**: ICP transitions from unbounded drift to centimeter-level geometric errors (RMSE 0.046-0.060m).
+
+3. **Keyframe adaptation**: SLAM adjusts pose-graph density 4.5× (101-452 kf/m) based on features and motion, not trajectory length.
+
+4. **Coverage trade-off**: ICP's dense mapping (45.61%) vs SLAM's selective processing (22.34%) reflects local detail vs global consistency priorities.
 
 **Future Work:**
 
-1. **Ground truth acquisition:** RTK-GPS or motion capture systems would enable quantitative trajectory error analysis
-2. **3D extension:** Extend methods to 6-DOF for multi-floor or outdoor environments
-3. **Dynamic environments:** Investigate performance with moving obstacles and people
-4. **Heterogeneous sensor fusion:** Integrate visual odometry or GPS for outdoor operation
-5. **Real-time constraints:** Benchmark performance on embedded hardware (Jetson Nano, Raspberry Pi)
+1. Ground truth acquisition (RTK-GPS, motion capture) for quantitative error analysis
+2. 3D SLAM extension for multi-floor environments
+3. Dynamic obstacle handling and visual-inertial fusion
+4. Embedded hardware benchmarking (Jetson Nano, Raspberry Pi)
 
 **Final Remarks:**
 
-This laboratory successfully demonstrated that robust mobile robot localization requires progression through multiple complementary techniques. Starting from basic wheel encoders, each successive layer—IMU fusion, LiDAR scan matching, and pose-graph optimization—addresses specific limitations while introducing new capabilities. The results validate that no single method is universally optimal; instead, the progression from Wheel → EKF → ICP → SLAM represents increasingly sophisticated approaches with corresponding trade-offs in computational cost, accuracy, and operational requirements.
-
-For production autonomous mobile robots operating in indoor environments, slam_toolbox with loop closure detection provides the best balance of accuracy (<2m drift with loops), map quality (global consistency), and computational efficiency. However, the foundational understanding of wheel odometry, Kalman filtering, and ICP scan matching remains essential for debugging, parameter tuning, and handling edge cases where SLAM may fail.
-
-The experimental validation across three diverse sequences (empty hallway, sharp turns, smooth motion) confirms that these methods are robust to environmental variation and motion dynamics, providing a solid foundation for autonomous navigation systems in structured indoor environments.
+The experiments demonstrate that robust indoor localization requires progressive capability layers: IMU fusion corrects heading, LiDAR scan matching enables geometric correction, and pose-graph optimization provides global consistency. Each method introduces specific trade-offs in computational cost, accuracy, and coverage that must match application requirements.
