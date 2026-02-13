@@ -1494,8 +1494,8 @@ Sharp turns and obstacles create feature-rich environment with moderate keyframe
 | Metric | Value |
 |--------|-------|
 | Trajectory Length | 62.12 m |
-| Number of Keyframes | 6,278 |
-| Keyframe Density | 101.1 kf/m |
+| Number of Keyframes | 30,188 |
+| Keyframe Density | 486.0 kf/m |
 | Mean Error vs ICP | 10.05 m |
 | Max Error vs ICP | 18.36 m |
 | Known Cells | 41,167 |
@@ -1503,9 +1503,9 @@ Sharp turns and obstacles create feature-rich environment with moderate keyframe
 
 **Performance Discussion:**
 
-Smooth motion produces dramatically sparse pose-graph with only 6,278 keyframes (101.1 kf/m), less than one-quarter of seq00 and one-third of seq01. Trajectory deviation from ICP (10.05 m mean, 18.36 m max) comparable to seq00 shows loop closure corrections despite sparse keyframe distribution. Achieves highest cell count (41,167) with 22.63% coverage, demonstrating effective mapping even with low pose-graph resolution.
+Smooth motion produces dense pose-graph with 30,188 keyframes (486.0 kf/m), slightly higher than seq00 and significantly higher than seq01. Trajectory deviation from ICP (10.05 m mean, 18.36 m max) comparable to seq00 shows loop closure corrections with dense keyframe distribution. Achieves highest cell count (41,167) with 22.63% coverage, demonstrating effective mapping with high pose-graph resolution.
 
-**Key Insight**: Smooth motion yields sparse pose-graphs (101.1 kf/m) but maintains strong mapping performance through effective local scan matching.
+**Key Insight**: Smooth motion with dense pose-graph (486.0 kf/m) maintains strong mapping performance through comprehensive keyframe coverage.
 
 #### 3.5.3 Overall Performance Analysis
 
@@ -1513,13 +1513,13 @@ Smooth motion produces dramatically sparse pose-graph with only 6,278 keyframes 
 
 | Sequence | Environment | Keyframe Density (kf/m) | Mean Error vs ICP (m) | Known Cells | Coverage |
 |----------|-------------|-------------------------|----------------------|-------------|----------|
-| **seq00** | Empty Hallway | **451.5** | 10.18 | 36,115 | 21.10% |
+| **seq00** | Empty Hallway | 451.5 | 10.18 | 36,115 | 21.10% |
 | **seq01** | Sharp Turns | 337.1 | **11.12** | **41,316** | **23.30%** |
-| **seq02** | Smooth Motion | **101.1** | **10.05** | 41,167 | 22.63% |
+| **seq02** | Smooth Motion | **486.0** | **10.05** | 41,167 | 22.63% |
 
 **Key Findings:**
 
-1. **Keyframe Density (101-452 kf/m)**: Varies 4.5× across sequences based on motion dynamics and environmental features, not trajectory length.
+1. **Keyframe Density (337-486 kf/m)**: Varies 1.4× across sequences based on motion dynamics and environmental features, not trajectory length.
 
 2. **Trajectory Deviation (10.05-11.12m mean)**: Loop closure optimization makes substantial trajectory corrections compared to ICP across all sequences.
 
@@ -1529,17 +1529,17 @@ Smooth motion produces dramatically sparse pose-graph with only 6,278 keyframes 
 
 **Performance Trends:**
 
+- **Smooth motion with dense keyframes**: seq02's 486.0 kf/m achieves highest keyframe density with comprehensive pose-graph coverage.
+
 - **Feature-sparse environments require dense pose-graphs**: seq00's 451.5 kf/m compensates for lack of geometric constraints.
 
-- **Feature-rich environments enable efficiency**: seq01's 337.1 kf/m achieves best coverage through distinctive landmarks.
-
-- **Smooth motion yields sparse graphs**: seq02's 101.1 kf/m maintains mapping quality with minimal pose-graph nodes.
+- **Feature-rich environments with moderate density**: seq01's 337.1 kf/m achieves best coverage through distinctive landmarks with lowest keyframe density.
 
 - **Loop closure corrections scale with features**: Highest trajectory changes in feature-rich seq01 (11.12m mean error vs ICP).
 
 **Conclusion:**
 
-The SLAM pipeline demonstrates robust performance across diverse environments with keyframe density adapting to motion dynamics and feature availability. Loop closure optimization consistently modifies trajectories by ~10m compared to ICP, showing active pose-graph correction. The 2× lower coverage versus ICP reflects architectural trade-off prioritizing global consistency over dense local mapping.
+The SLAM pipeline demonstrates robust performance across diverse environments with consistent keyframe density (337-486 kf/m) adapting to motion dynamics and feature availability. Loop closure optimization consistently modifies trajectories by ~10m compared to ICP, showing active pose-graph correction. The 2× lower coverage versus ICP reflects architectural trade-off prioritizing global consistency over dense local mapping.
 
 ---
 
