@@ -22,11 +22,9 @@
       - [1.2.5 Coordinate Frames](#125-coordinate-frames)
       - [1.2.6 Noise Covariance](#126-noise-covariance)
     - [1.3 Experimental Results](#13-experimental-results)
-      - [1.3.1 Experimental Setup](#131-experimental-setup)
-      - [1.3.2 Filter Validation](#132-filter-validation)
-      - [1.3.3 Trajectory Comparison](#133-trajectory-comparison)
-      - [1.3.4 Time Series Analysis](#134-time-series-analysis)
-      - [1.3.5 Overall Performance Analysis](#135-overall-performance-analysis)
+      - [1.3.1 Performance Metrics](#131-performance-metrics)
+      - [1.3.2 Results by Sequence](#132-results-by-sequence)
+      - [1.3.3 Overall Performance Analysis](#133-overall-performance-analysis)
   - [Part 2: ICP Odometry Refinement](#part-2-icp-odometry-refinement)
     - [2.1 ICP Problem Formulation](#21-icp-problem-formulation)
     - [2.2 ICP Algorithm](#22-icp-algorithm)
@@ -40,8 +38,7 @@
     - [2.8 Experimental Results](#28-experimental-results)
       - [2.8.1 Performance Metrics](#281-performance-metrics)
       - [2.8.2 Results by Sequence](#282-results-by-sequence)
-      - [2.8.3 Comparison: Wheel Odometry vs EKF vs ICP](#283-comparison-wheel-odometry-vs-ekf-vs-icp)
-      - [2.8.4 Overall Performance Analysis](#284-overall-performance-analysis)
+      - [2.8.3 Overall Performance Analysis](#283-overall-performance-analysis)
   - [Part 3: Full SLAM with slam\_toolbox](#part-3-full-slam-with-slam_toolbox)
     - [3.1 What is slam\_toolbox?](#31-what-is-slam_toolbox)
     - [3.2 Available Launch Configurations](#32-available-launch-configurations)
@@ -50,8 +47,7 @@
     - [3.5 Experimental Results](#35-experimental-results)
       - [3.5.1 Performance Metrics](#351-performance-metrics)
       - [3.5.2 Results by Sequence](#352-results-by-sequence)
-      - [3.5.3 Comparison: Wheel Odometry vs EKF vs ICP vs SLAM](#353-comparison-wheel-odometry-vs-ekf-vs-icp-vs-slam)
-      - [3.5.4 Overall Performance Analysis](#354-overall-performance-analysis)
+      - [3.5.3 Overall Performance Analysis](#353-overall-performance-analysis)
   - [Conclusion](#conclusion)
 
 ---
@@ -481,16 +477,18 @@ However, these covariances do not appear in the Kalman gain $K$ because $H = [0,
 
 This section validates the EKF implementation using recorded bag files from a TurtleBot3 Burger navigating FIBO Floor 3 corridors.
 
-#### 1.3.1 Experimental Setup
+#### 1.3.1 Performance Metrics
 
 **Dataset:**
+
 | Sequence | Description | Duration | Samples |
 |----------|-------------|----------|---------|
 | seq00 | Empty hallway | 525s | 10,504 |
 | seq01 | Non-empty hallway with sharp turns | 393s | 7,854 |
 | seq02 | Non-empty hallway with non-aggressive motion | 599s | 11,975 |
 
-**EKF Parameters:**
+**EKF Configuration:**
+
 | Parameter | Value |
 |-----------|-------|
 | Q | diag(0.0, 0.0, 0.01) |
@@ -499,86 +497,93 @@ This section validates the EKF implementation using recorded bag files from a Tu
 | Wheel radius | 0.033 m |
 | Track width | 0.160 m |
 
-#### 1.3.2 Filter Validation
+**Evaluation Metrics:**
 
-We validate filter consistency using **innovation statistics** following [Bris & Kolarik (2014)](https://pmc.ncbi.nlm.nih.gov/articles/PMC4239867/):
+The EKF implementation is validated using **innovation statistics** following [Bris & Kolarik (2014)](https://pmc.ncbi.nlm.nih.gov/articles/PMC4239867/):
 
 > "The innovation sequence is zero-mean, white (uncorrelated), with covariance equal to the measurement prediction covariance."
 
-**Innovation** (measurement residual):
+**Innovation (Measurement Residual):**
+- **Definition**: Difference between actual IMU measurement and predicted measurement from motion model
+- **Formula**: $\nu_k = z_k - h(\bar{\mu}_k) = \theta_{IMU} - \theta_{predicted}$
+- **Unit**: degrees (°)
+- **Interpretation**: Measures how much the filter's prediction deviates from actual sensor readings
+- **What it indicates**: Filter prediction accuracy and estimation quality
 
-```math
-\nu_k = z_k - h(\bar{\mu}_k) = \theta_{IMU} - \theta_{predicted}
-```
+**Innovation Mean:**
+- **Definition**: Average innovation across all measurements
+- **Formula**: $\mathbb{E}[\nu]$
+- **Expected**: Zero for unbiased filter
+- **Null Hypothesis**: $H_0: \mathbb{E}[\nu] = 0$
+- **Interpretation**: When the null hypothesis is accepted, it confirms "there is no significant discrepancy between a system estimate and a measurement model" (Bris & Kolarik, 2014)
+- **What it indicates**: Filter is **unbiased** and properly calibrated
 
-**Zero-Mean Test:**
+**Innovation Standard Deviation:**
+- **Definition**: Variance of innovation across all measurements
+- **Unit**: degrees (°)
+- **Expected**: Bounded variance matching theoretical prediction covariance
+- **Interpretation**: Measures consistency and stability of filter predictions
+- **What it indicates**: Filter is **not diverging** and maintains bounded uncertainty
 
-For an unbiased filter, the null hypothesis is:
-
-```math
-H_0: \mathbb{E}[\nu] = 0
-```
-
-When accepted, this confirms "there is no significant discrepancy between a system estimate and a measurement model"
-
-**What Innovation Statistics Tell Us**
-
-| Metric | Expected | Interpretation |
-|--------|----------|----------------|
-| Mean ≈ 0 | $\mathbb{E}[\nu] = 0$ | Filter is **unbiased** |
-| Small Std | Bounded variance | Filter is **not diverging** |
-
-**Result**
-
-| Sequence | Mean (°) | Std (°) |
-|----------|----------|---------|
-| seq00 | -0.001 | 0.113 |
-| seq01 | -0.018 | 0.196 |
-| seq02 | -0.003 | 0.119 |
-
-Near-zero mean confirms the filter is unbiased. Small std confirms the filter is stable.
+#### 1.3.2 Results by Sequence
 
 **Sequence 00:**
+![seq00 trajectory](part1_ekf_odom/figures/seq00/trajectory.png)
+
+![seq00 time series](part1_ekf_odom/figures/seq00/time_series.png)
 
 ![seq00 innovation](part1_ekf_odom/figures/seq00/innovation_analysis.png)
 
-**Sequence 01:**
+**Performance Metrics:**
+| Metric | Value |
+|--------|-------|
+| Heading Deviation | 0.082° |
+| Innovation Mean | -0.001° |
+| Innovation Std | 0.113° |
+
+**Performance Discussion:**
+
+Empty hallways achieve best accuracy with minimal heading deviation (0.082°) and innovation mean (-0.001°), showing optimal filter performance in feature-sparse environments.
+
+**Sequence 01**
+
+![seq01 trajectory](part1_ekf_odom/figures/seq01/trajectory.png)
+
+![seq01 time series](part1_ekf_odom/figures/seq01/time_series.png)
 
 ![seq01 innovation](part1_ekf_odom/figures/seq01/innovation_analysis.png)
 
-**Sequence 02:**
+**Performance Metrics:**
+| Metric | Value |
+|--------|-------|
+| Heading Deviation | 0.143° |
+| Innovation Mean | -0.018° |
+| Innovation Std | 0.196° |
 
-![seq02 innovation](part1_ekf_odom/figures/seq02/innovation_analysis.png)
+**Performance Discussion:**
 
-#### 1.3.3 Trajectory Comparison
-
-**Sequence 00:**
-
-![seq00 trajectory](part1_ekf_odom/figures/seq00/trajectory.png)
-
-**Sequence 01:**
-
-![seq01 trajectory](part1_ekf_odom/figures/seq01/trajectory.png)
+Sharp turns challenge the filter with higher innovation std (0.196°) and deviation (0.143°), indicating increased uncertainty during aggressive maneuvers.
 
 **Sequence 02:**
 
 ![seq02 trajectory](part1_ekf_odom/figures/seq02/trajectory.png)
 
-#### 1.3.4 Time Series Analysis
-
-**Sequence 00:**
-
-![seq00 time series](part1_ekf_odom/figures/seq00/time_series.png)
-
-**Sequence 01:**
-
-![seq01 time series](part1_ekf_odom/figures/seq01/time_series.png)
-
-**Sequence 02:**
-
 ![seq02 time series](part1_ekf_odom/figures/seq02/time_series.png)
 
-#### 1.3.5 Overall Performance Analysis
+![seq02 innovation](part1_ekf_odom/figures/seq02/innovation_analysis.png)
+
+**Performance Metrics:**
+| Metric | Value |
+|--------|-------|
+| Heading Deviation | 0.087° |
+| Innovation Mean | -0.003° |
+| Innovation Std | 0.119° |
+
+**Performance Discussion:**
+
+Smooth motion provides stability with low innovation std (0.119°), demonstrating predictable filter behavior with gradual motion profiles.
+
+#### 1.3.3 Overall Performance Analysis
 
 | Sequence | Description | Heading Deviation (deg) | Innovation Mean (deg) | Innovation Std (deg) |
 |----------|-------------|-------------------------|-----------------------|----------------------|
@@ -1188,75 +1193,7 @@ This sequence achieves the best consistency score (0.9818) with fitness of 0.990
 
 **Key Insight**: Smooth motion achieves the most stable and predictable performance over long trajectories through good odometry initial guesses and consistent scan overlap.
 
-#### 2.8.3 Comparison: Wheel Odometry vs EKF vs ICP
-
-This section compares the three odometry methods across all sequences. Since ground truth is not available, the comparison is qualitative based on trajectory consistency and time-series analysis.
-
-**Sequence 00:**
-
-![seq00 comparison](part2_icp_refine/figures/seq00/time_series.png)
-
-**Sequence 01:**
-
-![seq01 comparison](part2_icp_refine/figures/seq01/time_series.png)
-
-**Sequence 02:**
-
-![seq02 comparison](part2_icp_refine/figures/seq02/time_series.png)
-
-**Method Characteristics:**
-
-- **Wheel Odometry**: Baseline encoder-based estimates with unbounded position and heading drift
-- **EKF**: Fuses wheel odometry with IMU heading, corrects rotation drift only
-- **ICP**: Refines pose using LiDAR scan matching, corrects both position and heading
-
-**Numerical Comparison - Final Poses:**
-
-| Sequence | Method | Final Position (x, y) [m] | Final Heading [°] | Heading Deviation from IMU [°] |
-|----------|--------|---------------------------|-------------------|-------------------------------|
-| **seq00** | Wheel Odom | (2.73, -3.40) | 37.86 | 2.93 |
-| | EKF | (-0.25, -3.24) | 34.94 | 0.00 |
-| | ICP | (1.78, 0.08) | 4.95 | 29.98 |
-| **seq01** | Wheel Odom | (-3.70, -3.75) | 36.75 | 37.25 |
-| | EKF | (2.03, 0.03) | -0.49 | 0.00 |
-| | ICP | (2.05, 0.45) | -1.53 | 1.04 |
-| **seq02** | Wheel Odom | (0.32, -1.27) | 47.85 | 10.31 |
-| | EKF | (2.78, -0.96) | 37.54 | 0.01 |
-| | ICP | (5.27, 1.04) | 13.65 | 23.88 |
-
-**Heading Deviation Explanation:**
-
-- **EKF vs IMU**: EKF directly fuses IMU heading into its state estimate, resulting in near-zero deviation. Any small differences come from numerical precision and timing synchronization.
-
-- **ICP vs IMU**: ICP orientation is derived purely from **geometric scan matching optimization** using SVD to minimize point-to-point alignment error. ICP does not use IMU data. It solves for the rigid transformation that best aligns laser scans to the local map.
-
-- **Both Are Correct**: The deviation does not indicate error in either method. It shows that ICP successfully performs scan-to-map alignment independent of inertial measurements, which is the intended behavior for LiDAR-based localization.
-
-**Key Improvements:**
-
-**1. Wheel Odometry → EKF (IMU Fusion):**
-- **Problem Addressed**: Wheel encoders accumulate angular drift over time due to compounding measurement errors
-- **Solution**: IMU provides absolute orientation measurements to correct accumulated heading drift
-- **How It Works**: EKF fuses wheel velocity with IMU heading, using Kalman filtering to optimally combine both sources
-- **What Gets Fixed**: Heading (θ) drift is corrected through independent IMU observations
-- **What Remains Broken**: Position (x, y) still accumulates unbounded drift - no sensor measures absolute position
-- **Trade-off**: Minimal computation overhead for significant heading accuracy improvement
-
-**2. EKF → ICP (LiDAR-Based Refinement):**
-- **Paradigm Shift**: Changes from dead reckoning (internal sensors) to environment-based localization (external observations)
-- **Core Idea**: Use LiDAR to observe geometric structure and infer robot motion from environmental consistency
-- **How It Works**: Align current scan against local map of recent keyframes using geometric constraints
-- **Matching Process**: Find point correspondences between clouds and solve for rigid transformation minimizing alignment error
-- **What Gets Fixed**: Both position (x, y) and heading (θ) corrected simultaneously through geometric alignment
-- **Accuracy Level**: Centimeter-level pose refinement through continuous scan matching
-- **Key Limitation**: Local optimization only - no global pose graph optimization or loop closure detection
-- **Result**: Drift still accumulates over long distances without revisiting known areas
-
-**Limitations:**
-
-Without ground truth, absolute trajectory error cannot be quantified. The comparison relies on visual analysis of trajectory consistency and internal ICP quality metrics.
-
-#### 2.8.4 Overall Performance Analysis
+#### 2.8.3 Overall Performance Analysis
 
 **Performance Comparison:**
 
@@ -1570,82 +1507,7 @@ Smooth motion produces dramatically sparse pose-graph with only 6,278 keyframes 
 
 **Key Insight**: Smooth motion yields sparse pose-graphs (101.1 kf/m) but maintains strong mapping performance through effective local scan matching.
 
-#### 3.5.3 Comparison: Wheel Odometry vs EKF vs ICP vs SLAM
-
-This section compares all four odometry methods across sequences. Since ground truth is not available, comparison is qualitative based on trajectory consistency and drift analysis.
-
-**Sequence 00:**
-
-![seq00 comparison](part3_slam_comparison/figures/seq00/time_series.png)
-
-**Sequence 01:**
-
-![seq01 comparison](part3_slam_comparison/figures/seq01/time_series.png)
-
-**Sequence 02:**
-
-![seq02 comparison](part3_slam_comparison/figures/seq02/time_series.png)
-
-**Method Characteristics:**
-
-- **Wheel Odometry**: Baseline encoder integration with unbounded position and heading drift
-- **EKF**: Fuses wheel odometry with IMU heading, corrects rotation drift only
-- **ICP**: Refines pose using LiDAR scan matching, corrects both position and heading
-- **SLAM**: Adds pose-graph optimization and loop closure to ICP-style scan matching
-
-**Numerical Comparison - Final Poses:**
-
-| Sequence | Method | Final Position (x, y) [m] | Final Heading [°] | Heading Deviation from IMU [°] |
-|----------|--------|---------------------------|-------------------|-------------------------------|
-| **seq00** | Wheel Odom | (2.73, -3.40) | 37.86 | 2.93 |
-| | EKF | (-0.25, -3.24) | 34.94 | 0.00 |
-| | ICP | (1.78, 0.08) | 4.95 | 29.98 |
-| | SLAM | (1.82, -0.03) | 1.55 | 33.38 |
-| **seq01** | Wheel Odom | (-3.70, -3.75) | 36.75 | 37.25 |
-| | EKF | (2.03, 0.03) | -0.49 | 0.00 |
-| | ICP | (2.05, 0.45) | -1.53 | 1.04 |
-| | SLAM | (1.95, -0.14) | 2.69 | 3.18 |
-| **seq02** | Wheel Odom | (0.32, -1.27) | 47.85 | 10.31 |
-| | EKF | (2.78, -0.96) | 37.54 | 0.01 |
-| | ICP | (5.27, 1.04) | 13.65 | 23.88 |
-| | SLAM | (6.33, 0.42) | 5.11 | 32.44 |
-
-**Map Coverage Comparison (Common Boundary):**
-
-| Sequence | ICP Coverage | SLAM Coverage |
-|----------|--------------|---------------|
-| **seq00** | 47.14% | 21.10% |
-| **seq01** | 45.21% | 23.30% |
-| **seq02** | 44.48% | 22.63% |
-| **Average** | **45.61%** | **22.34%** |
-
-**Key Improvements:**
-
-**1. Wheel Odometry → EKF (IMU Fusion):**
-- **Heading correction**: IMU provides absolute orientation to correct encoder drift
-- **Improvement**: Heading deviation from 5-20° to <0.15° across all sequences
-- **What remains**: Position (x, y) still drifts without independent position measurements
-- **Cost**: Minimal computation overhead for significant heading accuracy gain
-
-**2. EKF → ICP (LiDAR-Based Refinement):**
-- **Paradigm shift**: From dead reckoning to environment-based localization
-- **Mechanism**: Geometric scan matching provides position and heading corrections
-- **Improvement**: Centimeter-level alignment (RMSE 0.046-0.060m), high coverage (45.61%)
-- **What remains**: Long-term drift accumulates without loop closure (~5.5m over 60m)
-- **Cost**: Real-time scan matching (2-3ms per iteration)
-
-**3. ICP → SLAM (Global Optimization + Loop Closure):**
-- **Paradigm shift**: From local scan matching to global pose-graph optimization
-- **Mechanism**: Backend solver minimizes cumulative pose-graph errors, loop closure adds global constraints
-- **Improvement**: Sub-2m drift with loop closure, globally consistent maps
-- **Trade-off**: 2× lower coverage (22.34% vs 45.61%) due to selective keyframe processing
-- **Cost**: Backend optimization overhead, but maintains real-time on modern hardware
-
-**Limitations:**
-
-Without ground truth, absolute trajectory error cannot be quantified. The comparison relies on drift analysis and visual trajectory inspection, which cannot measure path accuracy between start and end points.
-
-#### 3.5.4 Overall Performance Analysis
+#### 3.5.3 Overall Performance Analysis
 
 **Performance Comparison:**
 
