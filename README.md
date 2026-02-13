@@ -1246,12 +1246,14 @@ This section demonstrates full 2D SLAM using the ROS2 slam_toolbox package, whic
 
 **How It Works:**
 
-1. **Input Processing:** Subscribes to `/scan` (LiDAR) and odometry transforms via `/tf`
-2. **Scan Matching:** Aligns consecutive laser scans to refine odometry estimates
-3. **Pose Graph Construction:** Builds a graph where nodes are robot poses and edges are spatial constraints from scan matching
-4. **Loop Closure:** Detects revisited areas and adds loop closure constraints
-5. **Graph Optimization:** Uses Ceres Solver with Levenberg-Marquardt to minimize pose-graph errors
-6. **Map Generation:** Projects laser scans onto optimized poses to create occupancy grid maps
+![SLAM Toolbox Synchronous Diagram](src/slam_toolbox/images/slam_toolbox_sync.png)
+
+1. **Input Processing:** slam_toolbox runs as a ROS node, subscribing to `/scan` (LiDAR) and odometry transforms via `/tf`. Each incoming laser scan is paired with odometry to create a PosedScan object, which is queued for processing.
+2. **Scan Matching:** For each new scan, the system uses scan matching to refine the robot's pose estimate by aligning the scan with the current map or previous scans. This step corrects odometry drift and improves local accuracy.
+3. **Pose Graph Construction:** The refined poses and their associated scans are added as nodes to a pose graph. Edges in the graph represent spatial constraints from scan matching and odometry. This graph structure enables the system to keep track of the robot's trajectory and the spatial relationships between scans.
+4. **Loop Closure Detection:** When the robot revisits a previously mapped area, slam_toolbox detects loop closures by matching the current scan to earlier parts of the map. New constraints are added to the pose graph to represent these loop closures, which help correct accumulated drift.
+5. **Graph Optimization:** The pose graph is optimized using the Ceres Solver with the Levenberg-Marquardt algorithm. This global optimization step adjusts all poses in the graph to minimize the overall error, taking into account both odometry and scan matching constraints, as well as loop closures.
+6. **Map Generation:** After optimization, all laser scans are projected onto their optimized poses to generate an accurate and globally consistent occupancy grid map, which is published for use in navigation and visualization.
 
 **References:**
 - [slam_toolbox GitHub Repository](https://github.com/SteveMacenski/slam_toolbox)
