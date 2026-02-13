@@ -221,16 +221,6 @@ The state vector combines **pose** (position and orientation) with **twist** (li
   - ω_z is derived from heading state change: $\omega_z = \Delta\theta / \Delta t$
   - Velocities are expressed in the **world/odom frame**, not the robot body frame
 
-**Why include velocities as states?**
-
-Including velocity states enables the IMU heading measurement to propagate corrections to all states through cross-covariances in the covariance matrix. The Jacobian creates coupling between heading and velocities:
-
-```math
-F_{v_x,\theta} = -v \sin\theta, \quad F_{v_y,\theta} = v \cos\theta
-```
-
-This coupling allows the single IMU heading measurement to improve estimates of position and velocity, not just heading alone.
-
 #### 1.2.2 Motion Model (Prediction)
 
 **Control Input:**
