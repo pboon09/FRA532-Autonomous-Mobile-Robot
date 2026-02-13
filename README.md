@@ -1517,11 +1517,11 @@ Smooth motion produces dense pose-graph with 30,188 keyframes (486.0 kf/m), slig
 |----------|-------------|-------------------------|----------------------|-------------|----------|
 | **seq00** | Empty Hallway | 451.5 | 10.18 | 36,115 | 21.10% |
 | **seq01** | Sharp Turns | 337.1 | **11.12** | **41,316** | **23.30%** |
-| **seq02** | Smooth Motion | **486.0** | 10.05 | 41,167 | 22.63% |
+| **seq02** | Smooth Motion | **486.0** | **10.05** | 41,167 | 22.63% |
 
 **Key Findings:**
 
-1. **Keyframe Density (337-486 kf/m):** Keyframe density varies across sequences, primarily due to differences in robot motion (such as speed, turning, and stops) and environmental features (like obstacles and landmarks). It is not strictly determined by trajectory length, but by how often new keyframes are triggered based on movement and scene changes.
+1. **Keyframe Density (337-486 kf/m)**: Varies 1.4× across sequences based on motion dynamics and environmental features, not trajectory length.
 
 2. **Trajectory Deviation (10.05-11.12m mean)**: Loop closure optimization makes substantial trajectory corrections compared to ICP across all sequences.
 
@@ -1531,11 +1531,13 @@ Smooth motion produces dense pose-graph with 30,188 keyframes (486.0 kf/m), slig
 
 **Performance Trends:**
 
-- **Smooth, non-aggressive motion increases keyframe density**: seq02's 486.0 kf/m results from steady movement, leading to frequent keyframe additions and a dense pose-graph.
+- **Smooth motion with dense keyframes**: seq02's 486.0 kf/m achieves highest keyframe density with comprehensive pose-graph coverage.
 
-- **Feature-sparse environments also increase keyframe density**: seq00's 451.5 kf/m shows that in empty hallways, slam_toolbox compensates for lack of features by adding more keyframes.
+- **Feature-sparse environments require dense pose-graphs**: seq00's 451.5 kf/m compensates for lack of geometric constraints.
 
-- **Loop closure corrections are most effective in feature-rich environments**: The largest trajectory corrections (11.12m mean error vs ICP) occur in seq01, where abundant features enable robust loop closure.
+- **Feature-rich environments with moderate density**: seq01's 337.1 kf/m achieves best coverage through distinctive landmarks with lowest keyframe density.
+
+- **Loop closure corrections scale with features**: Highest trajectory changes in feature-rich seq01 (11.12m mean error vs ICP).
 
 **Conclusion:**
 
