@@ -1594,6 +1594,10 @@ This laboratory validated progressive development of mobile robot localization f
 | **seq02** | 44.48% | 22.63% |
 | **Average** | **45.61%** | **22.34%** |
 
+**Coverage Comparison Explanation:**
+
+ICP achieves higher map coverage because it uses all available scans to build a dense local map, resulting in more known cells and greater mapped area. However, this can include redundant or noisy data. SLAM, on the other hand, selectively processes scans (keyframes) and applies global optimization for consistency, which often results in lower coverage but a more reliable and accurate map. The trade-off is that ICP prioritizes local detail and coverage, while SLAM prioritizes global consistency and map quality.
+
 **Progressive Improvements:**
 
 **1. Wheel Odometry → EKF (IMU Fusion):**
@@ -1632,11 +1636,14 @@ This laboratory validated progressive development of mobile robot localization f
 - Limitation: Accumulated drift ~5.5m over 60m without loop closure
 
 **Part 3 - SLAM with slam_toolbox:**
-- Keyframe density: 101-452 kf/m (adapts to motion and features)
-- Trajectory deviation vs ICP: 10.05-11.12m mean (loop closure corrections)
-- Map coverage: 22.34% average (2× lower than ICP, prioritizes global consistency)
-- Known cells: 36k-41k depending on environment features
-- Trade-off: Lower coverage for global optimization and consistency
+
+**Comparison Summary:**
+
+**Accuracy:** Performance metrics such as heading deviation, RMSE, fitness, and map coverage are reported and discussed for Wheel Odometry, EKF, ICP, and SLAM. Wheel Odometry has the lowest accuracy due to drift, EKF improves heading accuracy, ICP achieves centimeter-level alignment and high coverage, and SLAM provides globally consistent maps with reliable accuracy.
+
+**Drift:** Wheel Odometry suffers from significant drift in both position and heading. EKF reduces heading drift through IMU fusion but does not correct position drift. ICP corrects both position and heading using LiDAR scan matching, but can accumulate drift without loop closure. SLAM minimizes cumulative drift by optimizing the pose-graph and detecting loop closures, providing the best global consistency.
+
+**Robustness:** Robustness is reflected in stability, consistency scores, and the ability to handle loop closure and global optimization. Wheel Odometry is least robust, EKF is more stable in heading, ICP is robust in local mapping but sensitive to long-term drift, and SLAM is most robust due to global optimization and loop closure, ensuring reliable mapping even in complex environments.
 
 **Key Findings:**
 
@@ -1647,13 +1654,6 @@ This laboratory validated progressive development of mobile robot localization f
 3. **Keyframe adaptation**: SLAM adjusts pose-graph density 4.5× (101-452 kf/m) based on features and motion, not trajectory length.
 
 4. **Coverage trade-off**: ICP's dense mapping (45.61%) vs SLAM's selective processing (22.34%) reflects local detail vs global consistency priorities.
-
-**Future Work:**
-
-1. Ground truth acquisition (RTK-GPS, motion capture) for quantitative error analysis
-2. 3D SLAM extension for multi-floor environments
-3. Dynamic obstacle handling and visual-inertial fusion
-4. Embedded hardware benchmarking (Jetson Nano, Raspberry Pi)
 
 **Final Remarks:**
 
