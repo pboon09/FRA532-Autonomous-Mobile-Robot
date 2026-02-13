@@ -209,10 +209,10 @@ The robot velocity is computed from **encoder position deltas** rather than the 
 
 #### 1.2.1 State Vector Design
 
-The EKF estimates a 3-dimensional state vector:
+The EKF estimates a 6-dimensional state vector representing pose and twist:
 
 ```math
-\mu = \begin{bmatrix} x \\ y \\ \theta \end{bmatrix}
+\mu = \begin{bmatrix} x \\ y \\ \theta \\ v_x \\ v_y \\ \omega_z \end{bmatrix}
 ```
 
 | State | Description |
@@ -220,20 +220,32 @@ The EKF estimates a 3-dimensional state vector:
 | x | Position in x-axis (m) |
 | y | Position in y-axis (m) |
 | θ | Heading angle (rad) |
+| v_x | Linear velocity in x-axis (m/s) |
+| v_y | Linear velocity in y-axis (m/s) |
+| ω_z | Angular velocity around z-axis (rad/s) |
 
-**Why these 3 states?**
-- A ground robot is constrained to planar motion, so only 2D position and heading are needed
-- Roll, pitch, and z-height are assumed constant (flat floor assumption)
-- These states fully describe the robot's configuration in the odom frame
+**Why these 6 states?**
 
-**Why not include velocities $(v, \omega)$?**
+The state vector combines **pose** (position and orientation) with **twist** (linear and angular velocities):
 
-In this EKF formulation, velocities are treated as **control inputs**, not states:
-- Wheel encoders directly measure $(v, \omega)$
-- The EKF uses these as inputs to the motion model (prediction step)
-- To estimate velocities as states, we would need **independent velocity measurements** for the correction step
-- Since the IMU only provides heading $\theta$, there is no velocity measurement to fuse
-- Including unmeasured states would only add uncertainty without improving the estimate
+- **Pose states (x, y, θ)**: Describe the robot's configuration in the odom frame
+  - A ground robot is constrained to planar motion (2D position + heading)
+  - Roll, pitch, and z-height are assumed constant (flat floor assumption)
+
+- **Twist states (v_x, v_y, ω_z)**: Describe the robot's motion in the world frame
+  - v_x and v_y are computed from control inputs: $v_x = v \cos\theta$, $v_y = v \sin\theta$
+  - ω_z is derived from heading state change: $\omega_z = \Delta\theta / \Delta t$
+  - Velocities are expressed in the **world/odom frame**, not the robot body frame
+
+**Why include velocities as states?**
+
+Including velocity states enables the IMU heading measurement to propagate corrections to all states through cross-covariances in the covariance matrix. The Jacobian creates coupling between heading and velocities:
+
+```math
+F_{v_x,\theta} = -v \sin\theta, \quad F_{v_y,\theta} = v \cos\theta
+```
+
+This coupling allows the single IMU heading measurement to improve estimates of position and velocity, not just heading alone.
 
 #### 1.2.2 Motion Model (Prediction)
 
@@ -243,21 +255,47 @@ In this EKF formulation, velocities are treated as **control inputs**, not state
 u_t = \begin{bmatrix} v \\ \omega \end{bmatrix}
 ```
 
+where $v$ is linear velocity and $\omega$ is angular velocity from wheel odometry.
+
 **Why use $(v, \omega)$ instead of wheel odometry pose $(x, y, \theta)$?**
 
 Using velocities allows the EKF to **perform its own integration**, maintaining a separate state that can be **corrected by IMU**. Using the integrated pose directly would **replace** the EKF state with wheel odometry, **bypassing fusion** entirely.
 
-**State Transition (Unicycle Model):**
+**State Transition:**
+
+The state prediction integrates control inputs to update pose and computes twist from the new pose:
 
 ```math
-\bar{\mu}_t = f(\mu_{t-1}, u_t) = \begin{bmatrix} x + v \cos\theta \cdot \Delta t \\ y + v \sin\theta \cdot \Delta t \\ \theta + \omega \cdot \Delta t \end{bmatrix}
+\theta_{new} = \theta + \omega \cdot \Delta t
+```
+
+```math
+\bar{\mu}_t = f(\mu_{t-1}, u_t) = \begin{bmatrix}
+x + v \cos\theta_{new} \cdot \Delta t \\
+y + v \sin\theta_{new} \cdot \Delta t \\
+\theta_{new} \\
+v \cos\theta_{new} \\
+v \sin\theta_{new} \\
+\frac{\Delta\theta}{\Delta t}
+\end{bmatrix}
 ```
 
 **State Jacobian:**
 
+The Jacobian matrix captures how uncertainty propagates through the motion model. Key coupling terms link heading to position and velocities:
+
 ```math
-F_t = \frac{\partial f}{\partial \mu} = \begin{bmatrix} 1 & 0 & -v \sin\theta \cdot \Delta t \\ 0 & 1 & v \cos\theta \cdot \Delta t \\ 0 & 0 & 1 \end{bmatrix}
+F_t = \frac{\partial f}{\partial \mu} = \begin{bmatrix}
+1 & 0 & -v \sin\theta \cdot \Delta t & 0 & 0 & 0 \\
+0 & 1 & v \cos\theta \cdot \Delta t & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & -v \sin\theta_{new} & 0 & 0 & 0 \\
+0 & 0 & v \cos\theta_{new} & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0
+\end{bmatrix}
 ```
+
+The non-zero off-diagonal terms $F_{x,\theta}$, $F_{y,\theta}$, $F_{v_x,\theta}$, and $F_{v_y,\theta}$ create cross-covariances that enable IMU heading corrections to propagate to all states.
 
 #### 1.2.3 Measurement Model (Correction)
 
@@ -295,7 +333,7 @@ h(\bar{\mu}_t) = \theta
 **Measurement Jacobian:**
 
 ```math
-H_t = \frac{\partial h}{\partial \mu} = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}
+H_t = \frac{\partial h}{\partial \mu} = \begin{bmatrix} 0 & 0 & 1 & 0 & 0 & 0 \end{bmatrix}
 ```
 
 #### 1.2.4 EKF Algorithm
@@ -377,7 +415,14 @@ Without noise covariances, the filter cannot balance prediction vs. measurement.
 **Covariance Matrices in This Work:**
 
 ```math
-Q_t = \begin{bmatrix} Q_{xx} & 0 & 0 \\ 0 & Q_{yy} & 0 \\ 0 & 0 & Q_{\theta\theta} \end{bmatrix}, \quad R_t = \begin{bmatrix} R_{\theta\theta} \end{bmatrix}
+Q_t = \begin{bmatrix}
+Q_{xx} & 0 & 0 & 0 & 0 & 0 \\
+0 & Q_{yy} & 0 & 0 & 0 & 0 \\
+0 & 0 & Q_{\theta\theta} & 0 & 0 & 0 \\
+0 & 0 & 0 & Q_{v_xv_x} & 0 & 0 \\
+0 & 0 & 0 & 0 & Q_{v_yv_y} & 0 \\
+0 & 0 & 0 & 0 & 0 & Q_{w_zw_z}
+\end{bmatrix}, \quad R_t = \begin{bmatrix} R_{\theta\theta} \end{bmatrix}
 ```
 
 **Trust Interpretation:**
@@ -389,7 +434,7 @@ Q_t = \begin{bmatrix} Q_{xx} & 0 & 0 \\ 0 & Q_{yy} & 0 \\ 0 & 0 & Q_{\theta\thet
 | Lower R | More trust in measurement |
 | Higher R | Less trust in measurement, smoother estimate, relies more on prediction |
 
-**What Really Affects the Estimate in This 3-State Model?**
+**What Really Affects the Estimate in This 6-State Model?**
 
 The IMU measures **only heading $\theta$**, which determines which states can be corrected.
 
@@ -400,7 +445,7 @@ The IMU measures **only heading $\theta$**, which determines which states can be
 
 Wheel odometry cannot be a measurement because it already defines the motion model. Using it for both would double-count information.
 
-**What happens to $x$, $y$, $\theta$ during correction?**
+**What happens to all 6 states during correction?**
 
 Starting from the Kalman gain (Section 1.2.4):
 
@@ -408,65 +453,76 @@ Starting from the Kalman gain (Section 1.2.4):
 K_t = \bar{\Sigma}_t H_t^T (H_t \bar{\Sigma}_t H_t^T + R_t)^{-1}
 ```
 
-With $H = [0, 0, 1]$:
+With $H = [0, 0, 1, 0, 0, 0]$ (only measuring $\theta$):
 
 ```math
-H_t \bar{\Sigma}_t H_t^T = \Sigma_{\theta\theta}, \quad \bar{\Sigma}_t H_t^T = \begin{bmatrix} \Sigma_{x\theta} \\ \Sigma_{y\theta} \\ \Sigma_{\theta\theta} \end{bmatrix}
+H_t \bar{\Sigma}_t H_t^T = \Sigma_{\theta\theta}
 ```
 
 ```math
-\therefore K_t = \begin{bmatrix} K_x \\ K_y \\ K_\theta \end{bmatrix} = \begin{bmatrix} \frac{\Sigma_{x\theta}}{\Sigma_{\theta\theta} + R_t} \\ \frac{\Sigma_{y\theta}}{\Sigma_{\theta\theta} + R_t} \\ \frac{\Sigma_{\theta\theta}}{\Sigma_{\theta\theta} + R_t} \end{bmatrix}
+\bar{\Sigma}_t H_t^T = \begin{bmatrix} \Sigma_{x\theta} \\ \Sigma_{y\theta} \\ \Sigma_{\theta\theta} \\ \Sigma_{v_x\theta} \\ \Sigma_{v_y\theta} \\ \Sigma_{w_z\theta} \end{bmatrix}
 ```
-
-Since cross-covariances $\Sigma_{x\theta}, \Sigma_{y\theta} \approx 0$, we have $K_x \approx 0$ and $K_y \approx 0$.
-
-**Key insight:** No matter what $Q_{xx}$, $Q_{yy}$ values we choose, x and y receive almost no correction because their Kalman gains are approximately zero.
-
-**How do x and y change if no one corrects them?**
-
-From the state update:
 
 ```math
-\mu_t = \bar{\mu}_t + K_t y_t
+\therefore K_t = \begin{bmatrix} K_x \\ K_y \\ K_\theta \\ K_{v_x} \\ K_{v_y} \\ K_{w_z} \end{bmatrix} = \frac{1}{\Sigma_{\theta\theta} + R_t} \begin{bmatrix} \Sigma_{x\theta} \\ \Sigma_{y\theta} \\ \Sigma_{\theta\theta} \\ \Sigma_{v_x\theta} \\ \Sigma_{v_y\theta} \\ \Sigma_{w_z\theta} \end{bmatrix}
 ```
 
-With $K_x \approx 0$, $K_y \approx 0$:
+**Which Q parameters matter?**
+
+Let's trace how cross-covariances are built. From the covariance prediction:
 
 ```math
-x_t \approx \bar{x}_t, \quad y_t \approx \bar{y}_t
+\bar{\Sigma}_{x\theta} = \Sigma_{x\theta} + F_{x,\theta} \cdot \Sigma_{\theta\theta}
 ```
 
-Position states follow the **prediction exactly** (wheel odometry integration). The EKF does not correct position directly.
+The key observation: **$\Sigma_{x\theta}$ only depends on $\Sigma_{\theta\theta}$, not on $\Sigma_{xx}$!**
 
-However, correcting $\theta$ **indirectly improves** position because future predictions use the corrected heading:
+Similarly:
+- $\Sigma_{y\theta}$ depends on $\Sigma_{\theta\theta}$ only
+- $\Sigma_{v_x\theta}$ depends on $\Sigma_{\theta\theta}$ only
+- $\Sigma_{v_y\theta}$ depends on $\Sigma_{\theta\theta}$ only
+
+Since all cross-covariances are built from $\Sigma_{\theta\theta}$, and $\Sigma_{\theta\theta}$ is affected by $Q_{\theta\theta}$:
 
 ```math
-\bar{x}_t = x_{t-1} + v \cos\theta_{t-1} \cdot \Delta t, \quad \bar{y}_t = y_{t-1} + v \sin\theta_{t-1} \cdot \Delta t
+\bar{\Sigma}_{\theta\theta} = \Sigma_{\theta\theta} + Q_{\theta\theta}
 ```
 
-**What happens to $\theta$ when we change Q and R?**
+**Conclusion:** Only $Q_{\theta\theta}$ matters for building cross-covariances!
 
-From $K_\theta = \Sigma_{\theta\theta} / (\Sigma_{\theta\theta} + R)$ and the covariance prediction $\bar{\Sigma}_{\theta\theta} \approx \Sigma_{\theta\theta} + Q_{\theta\theta}$:
+The other Q parameters ($Q_{xx}$, $Q_{yy}$, $Q_{v_xv_x}$, $Q_{v_yv_y}$, $Q_{w_zw_z}$) only affect diagonal elements of $P$:
 
-Increasing $Q_{\theta\theta}$ causes $\Sigma_{\theta\theta}$ to grow faster during prediction. A larger $\Sigma_{\theta\theta}$ in the numerator produces a larger $K_\theta$, which applies a stronger correction toward the IMU measurement.
+```math
+\bar{\Sigma}_{xx} = \Sigma_{xx} + Q_{xx}, \quad \bar{\Sigma}_{v_xv_x} = \Sigma_{v_xv_x} + Q_{v_xv_x}, \text{ etc.}
+```
 
-Increasing $R$ adds more to the denominator $(\Sigma_{\theta\theta} + R)$, which produces a smaller $K_\theta$. A smaller gain means weaker correction and smoother estimates that rely more on prediction.
+But these diagonal elements **do not appear** in the Kalman gain $K$ because $H = [0, 0, 1, 0, 0, 0]$ only selects $\Sigma_{\theta\theta}$ and the cross-covariances with $\theta$.
 
-The ratio $Q_{\theta\theta}/R$ determines filter behavior; doubling both produces identical response.
+**What happens when we change Q and R?**
+
+**Increasing $Q_{\theta\theta}$:**
+- Increases $\Sigma_{\theta\theta}$ faster during prediction
+- Larger $\Sigma_{\theta\theta}$ builds larger cross-covariances through $F$
+- Larger cross-covariances → larger Kalman gains for all states
+- Stronger corrections toward IMU measurement
+
+**Increasing $R$:**
+- Adds to denominator $(\Sigma_{\theta\theta} + R)$
+- Smaller Kalman gains for all states
+- Weaker corrections, smoother estimates
+
+The ratio $Q_{\theta\theta}/R$ determines filter responsiveness.
 
 **Conclusion**
 
-With only IMU heading as correction source, only $Q_{\theta\theta}$ and $R$ affect the state estimate.
+With only IMU heading as the correction source:
 
-For $Q_{xx}$ and $Q_{yy}$, changing these values affects the covariance prediction:
-
-```math
-\bar{\Sigma}_{xx} = \Sigma_{xx,t-1} + Q_{xx}, \quad \bar{\Sigma}_{yy} = \Sigma_{yy,t-1} + Q_{yy}
-```
-
-However, these covariances do not appear in the Kalman gain $K$ because $H = [0, 0, 1]$ selects only $\Sigma_{\theta\theta}$. The state update $\mu = \bar{\mu} + K \cdot y$ remains unchanged regardless of $\Sigma_{xx}$ or $\Sigma_{yy}$. Therefore, tuning $Q_{xx}$ or $Q_{yy}$ only inflates the covariance matrix without changing the actual position estimates.
-
-**Future Extension:** If position measurements were added (e.g., GPS), then $H$ would observe $x$ and $y$, making $K_x$ and $K_y$ non-zero. In that case, $Q_{xx}$ and $Q_{yy}$ would become meaningful tuning parameters.
+| Parameter | Affects Estimate? | Why? |
+|-----------|------------------|------|
+| **$R$** | ✅ YES | Denominator in all Kalman gains |
+| **$Q_{\theta\theta}$** | ✅ YES | Builds $\Sigma_{\theta\theta}$ which builds all cross-covariances |
+| $Q_{xx}$, $Q_{yy}$ | ❌ NO | Only affect diagonal elements, not cross-covariances |
+| $Q_{v_xv_x}$, $Q_{v_yv_y}$, $Q_{w_zw_z}$ | ❌ NO | Only affect diagonal elements, not cross-covariances |
 
 ### 1.3 Experimental Results
 
@@ -491,11 +547,12 @@ This section validates the EKF implementation using recorded bag files from a Tu
 
 | Parameter | Value |
 |-----------|-------|
-| Q | diag(0.0, 0.0, 0.01) |
+| Q | diag(0.001, 0.001, 0.01, 0.05, 0.05, 0.01) |
 | R | 0.1 |
-| Σ₀ | diag(0.0, 0.0, 0.1) |
+| Σ₀ | diag(0.01, 0.01, 0.1, 0.5, 0.5, 0.1) |
 | Wheel radius | 0.033 m |
 | Track width | 0.160 m |
+| Control clipping | v_max = ±0.22 m/s, ω_max = ±2.84 rad/s |
 
 **Evaluation Metrics:**
 
@@ -534,6 +591,8 @@ The EKF implementation is validated using **innovation statistics** following [B
 
 ![seq00 innovation](part1_ekf_odom/figures/seq00/innovation_analysis.png)
 
+![seq00 velocity](part1_ekf_odom/figures/seq00/velocity_comparison.png)
+
 **Performance Metrics:**
 | Metric | Value |
 |--------|-------|
@@ -553,6 +612,8 @@ Empty hallways achieve best accuracy with minimal heading deviation (0.082°) an
 
 ![seq01 innovation](part1_ekf_odom/figures/seq01/innovation_analysis.png)
 
+![seq01 velocity](part1_ekf_odom/figures/seq01/velocity_comparison.png)
+
 **Performance Metrics:**
 | Metric | Value |
 |--------|-------|
@@ -571,6 +632,8 @@ Sharp turns challenge the filter with higher innovation std (0.196°) and deviat
 ![seq02 time series](part1_ekf_odom/figures/seq02/time_series.png)
 
 ![seq02 innovation](part1_ekf_odom/figures/seq02/innovation_analysis.png)
+
+![seq02 velocity](part1_ekf_odom/figures/seq02/velocity_comparison.png)
 
 **Performance Metrics:**
 | Metric | Value |

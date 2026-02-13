@@ -101,7 +101,6 @@ def plot_time_series_combined(times, wheel_x, wheel_y, wheel_theta, ekf_x, ekf_y
 
     axes[2].plot(times, np.rad2deg(wheel_theta), color=wheel_color, label='Wheel Odometry', linewidth=1.5, alpha=0.8)
     axes[2].plot(times, np.rad2deg(ekf_theta), color=ekf_color, label='EKF', linewidth=1.5, alpha=0.9)
-    axes[2].plot(times, np.rad2deg(imu_theta), color=imu_color, linestyle='--', label='IMU', linewidth=1.5, alpha=0.7)
     axes[2].set_xlabel('Time [s]', fontsize=13, fontweight='bold')
     axes[2].set_ylabel('Theta [deg]', fontsize=13, fontweight='bold')
     axes[2].legend(loc='best', fontsize=10)
@@ -149,3 +148,82 @@ def compute_heading_rmse(theta_method, theta_imu):
     diff = np.array(theta_method) - np.array(theta_imu)
     diff = np.arctan2(np.sin(diff), np.cos(diff))
     return np.sqrt(np.mean(diff**2))
+
+
+def plot_velocity_comparison(times, vx_ctrl, vy_ctrl, wz_ctrl, vx_ekf, vy_ekf, wz_ekf, title):
+    fig, axes = plt.subplots(3, 1, figsize=(16, 10), sharex=True)
+    fig.suptitle(title, fontsize=16, fontweight='bold')
+
+    ctrl_color = '#2E86AB'
+    ekf_color = '#A23B72'
+
+    axes[0].plot(times, vx_ctrl, color=ctrl_color, label='Control', linewidth=2.5, alpha=0.6)
+    axes[0].plot(times, vx_ekf, color=ekf_color, label='EKF', linewidth=1.5, alpha=1.0)
+    axes[0].set_ylabel('vx [m/s]', fontsize=13, fontweight='bold')
+    axes[0].legend(loc='upper right', fontsize=11, framealpha=1.0, edgecolor='black')
+    axes[0].grid(True, alpha=0.25, linestyle=':')
+
+    axes[1].plot(times, vy_ctrl, color=ctrl_color, label='Control', linewidth=2.5, alpha=0.6)
+    axes[1].plot(times, vy_ekf, color=ekf_color, label='EKF', linewidth=1.5, alpha=1.0)
+    axes[1].set_ylabel('vy [m/s]', fontsize=13, fontweight='bold')
+    axes[1].legend(loc='upper right', fontsize=11, framealpha=1.0, edgecolor='black')
+    axes[1].grid(True, alpha=0.25, linestyle=':')
+
+    axes[2].plot(times, np.rad2deg(wz_ctrl), color=ctrl_color, label='Control', linewidth=2.5, alpha=0.6)
+    axes[2].plot(times, np.rad2deg(wz_ekf), color=ekf_color, label='EKF', linewidth=1.5, alpha=1.0)
+    axes[2].set_xlabel('Time [s]', fontsize=13, fontweight='bold')
+    axes[2].set_ylabel('wz [deg/s]', fontsize=13, fontweight='bold')
+    axes[2].legend(loc='upper right', fontsize=11, framealpha=1.0, edgecolor='black')
+    axes[2].grid(True, alpha=0.25, linestyle=':')
+
+    for ax in axes:
+        ax.tick_params(labelsize=11)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_velocity_comparison_last_minute(times, vx_ctrl, vy_ctrl, wz_ctrl, vx_ekf, vy_ekf, wz_ekf, title):
+    times = np.array(times)
+    max_time = times[-1]
+    start_time = max(0, max_time - 60)
+
+    mask = times >= start_time
+    times_sub = times[mask]
+    vx_ctrl_sub = np.array(vx_ctrl)[mask]
+    vy_ctrl_sub = np.array(vy_ctrl)[mask]
+    wz_ctrl_sub = np.array(wz_ctrl)[mask]
+    vx_ekf_sub = np.array(vx_ekf)[mask]
+    vy_ekf_sub = np.array(vy_ekf)[mask]
+    wz_ekf_sub = np.array(wz_ekf)[mask]
+
+    fig, axes = plt.subplots(3, 1, figsize=(16, 10), sharex=True)
+    fig.suptitle(f'{title} (Last 60s)', fontsize=16, fontweight='bold')
+
+    ctrl_color = '#2E86AB'
+    ekf_color = '#A23B72'
+
+    axes[0].plot(times_sub, vx_ctrl_sub, color=ctrl_color, label='Control', linewidth=2.5, alpha=0.6)
+    axes[0].plot(times_sub, vx_ekf_sub, color=ekf_color, label='EKF', linewidth=1.5, alpha=1.0)
+    axes[0].set_ylabel('vx [m/s]', fontsize=13, fontweight='bold')
+    axes[0].legend(loc='upper right', fontsize=11, framealpha=1.0, edgecolor='black')
+    axes[0].grid(True, alpha=0.25, linestyle=':')
+
+    axes[1].plot(times_sub, vy_ctrl_sub, color=ctrl_color, label='Control', linewidth=2.5, alpha=0.6)
+    axes[1].plot(times_sub, vy_ekf_sub, color=ekf_color, label='EKF', linewidth=1.5, alpha=1.0)
+    axes[1].set_ylabel('vy [m/s]', fontsize=13, fontweight='bold')
+    axes[1].legend(loc='upper right', fontsize=11, framealpha=1.0, edgecolor='black')
+    axes[1].grid(True, alpha=0.25, linestyle=':')
+
+    axes[2].plot(times_sub, np.rad2deg(wz_ctrl_sub), color=ctrl_color, label='Control', linewidth=2.5, alpha=0.6)
+    axes[2].plot(times_sub, np.rad2deg(wz_ekf_sub), color=ekf_color, label='EKF', linewidth=1.5, alpha=1.0)
+    axes[2].set_xlabel('Time [s]', fontsize=13, fontweight='bold')
+    axes[2].set_ylabel('wz [deg/s]', fontsize=13, fontweight='bold')
+    axes[2].legend(loc='upper right', fontsize=11, framealpha=1.0, edgecolor='black')
+    axes[2].grid(True, alpha=0.25, linestyle=':')
+
+    for ax in axes:
+        ax.tick_params(labelsize=11)
+
+    plt.tight_layout()
+    return fig

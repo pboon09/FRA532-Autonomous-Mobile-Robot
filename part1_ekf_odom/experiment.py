@@ -11,7 +11,8 @@ from bag_reader import BagReader
 from utils import (
     save_figure, save_json, save_csv,
     plot_trajectory, plot_time_series_combined,
-    plot_innovation_analysis, compute_heading_rmse
+    plot_innovation_analysis, compute_heading_rmse,
+    plot_velocity_comparison, plot_velocity_comparison_last_minute
 )
 
 
@@ -25,9 +26,9 @@ class Experiment:
         self.json_dir = self.seq_dir / 'json'
         self.csv_dir = self.seq_dir / 'csv'
 
-        self.default_Q = [0.0, 0.0, 0.01]
+        self.default_Q = [0.001, 0.001, 0.01, 0.05, 0.05, 0.01]
         self.default_R = 0.1
-        self.default_P0 = [0.0, 0.0, 0.1]
+        self.default_P0 = [0.01, 0.01, 0.1, 0.5, 0.5, 0.1]
 
         self.wheel_radius = 0.033
         self.track_width = 0.160
@@ -74,6 +75,9 @@ class Experiment:
             wheel_odom.update(d['rad_l'], d['rad_r'], dt)
             v, omega = wheel_odom.get_velocity()
 
+            v = np.clip(v, -0.22, 0.22)
+            omega = np.clip(omega, -2.84, 2.84)
+
             ekf.predict(v, omega, dt)
 
             if imu_offset is None:
@@ -91,6 +95,10 @@ class Experiment:
             nis = (innovation ** 2) / S if S > 0 else 0.0
             P_cov = ekf.get_covariance()
 
+            theta_ctrl = ekf_state[2]
+            vx_ctrl = v * math.cos(theta_ctrl)
+            vy_ctrl = v * math.sin(theta_ctrl)
+
             results.append({
                 'timestamp': t,
                 'x_wheel': wheel_pose[0],
@@ -99,6 +107,12 @@ class Experiment:
                 'x_ekf': ekf_state[0],
                 'y_ekf': ekf_state[1],
                 'theta_ekf': ekf_state[2],
+                'vx_ekf': ekf_state[3],
+                'vy_ekf': ekf_state[4],
+                'wz_ekf': ekf_state[5],
+                'vx_ctrl': vx_ctrl,
+                'vy_ctrl': vy_ctrl,
+                'wz_ctrl': omega,
                 'imu_corrected': imu_corrected,
                 'innovation': innovation,
                 'innovation_cov': S,
@@ -125,6 +139,12 @@ class Experiment:
         ekf_x = [r['x_ekf'] for r in results]
         ekf_y = [r['y_ekf'] for r in results]
         ekf_theta = [r['theta_ekf'] for r in results]
+        vx_ekf = [r['vx_ekf'] for r in results]
+        vy_ekf = [r['vy_ekf'] for r in results]
+        wz_ekf = [r['wz_ekf'] for r in results]
+        vx_ctrl = [r['vx_ctrl'] for r in results]
+        vy_ctrl = [r['vy_ctrl'] for r in results]
+        wz_ctrl = [r['wz_ctrl'] for r in results]
         imu_corrected = [r['imu_corrected'] for r in results]
         innovations = [r['innovation'] for r in results]
         wheel_heading_rmse = compute_heading_rmse(wheel_theta, imu_corrected)
@@ -142,6 +162,11 @@ class Experiment:
         fig = plot_innovation_analysis(times, innovations,
                                        f'{self.sequence_name}: Innovation Analysis')
         save_figure(fig, self.seq_dir / 'innovation_analysis.png')
+
+        fig = plot_velocity_comparison(times, vx_ctrl, vy_ctrl, wz_ctrl,
+                                      vx_ekf, vy_ekf, wz_ekf,
+                                      f'{self.sequence_name}: Velocity Comparison')
+        save_figure(fig, self.seq_dir / 'velocity_comparison.png')
 
         save_csv(results, self.csv_dir / 'baseline_data.csv')
 
