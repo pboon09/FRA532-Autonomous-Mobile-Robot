@@ -3,8 +3,6 @@
 ## Table of Contents
 - [LAB1: Kalman Filter / SLAM](#lab1-kalman-filter--slam)
   - [Table of Contents](#table-of-contents)
-  - [Project Overview](#project-overview)
-  - [System Architecture](#system-architecture)
   - [Setup](#setup)
     - [Dataset Description](#dataset-description)
     - [Running](#running)
@@ -49,20 +47,6 @@
       - [3.5.2 Results by Sequence](#352-results-by-sequence)
       - [3.5.3 Overall Performance Analysis](#353-overall-performance-analysis)
   - [Conclusion](#conclusion)
-
----
-
-## Project Overview
-
-<!-- TODO: Add project overview -->
-
----
-
-## System Architecture
-
-<!-- TODO: Add system architecture diagram -->
-
----
 
 ## Setup
 
