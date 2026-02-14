@@ -10,7 +10,7 @@
     - [1.1 Wheel Odometry](#11-wheel-odometry)
       - [1.1.1 Robot Parameters](#111-robot-parameters)
       - [1.1.2 Wheel Displacement](#112-wheel-displacement)
-      - [1.1.3 ICC (Instantaneous Center of Curvature) Kinematics](#113-icc-instantaneous-center-of-curvature-kinematics)
+      - [1.1.3 ICR (Instantaneous Center of Rotation) Kinematics](#113-icr-instantaneous-center-of-rotation-kinematics)
       - [1.1.4 Robot Velocity](#114-robot-velocity)
     - [1.2 Extended Kalman Filter](#12-extended-kalman-filter)
       - [1.2.1 State Vector Design](#121-state-vector-design)
@@ -116,7 +116,7 @@ ros2 launch turtle_bringup part3.launch.py
 This section presents a sensor fusion approach combining wheel odometry and IMU orientation using an Extended Kalman Filter (EKF). The wheel odometry provides position and velocity estimates through encoder measurements, while the IMU supplies heading corrections to compensate for accumulated drift.
 
 **References:**
-- Columbia University CS4733 - [ICC Kinematics](https://www.cs.columbia.edu/~allen/F17/NOTES/icckinematics.pdf)
+- Columbia University CS4733 - [ICR Kinematics](https://www.cs.columbia.edu/~allen/F17/NOTES/icckinematics.pdf)
 
 ### 1.1 Wheel Odometry
 
@@ -137,9 +137,9 @@ The wheel displacements are computed from encoder position changes:
 
 where $\Delta \theta_r$ and $\Delta \theta_l$ represent the angular displacement of the right and left wheels in radians.
 
-#### 1.1.3 ICC (Instantaneous Center of Curvature) Kinematics
+#### 1.1.3 ICR (Instantaneous Center of Rotation) Kinematics
 
-For differential drive robots, the ICC method provides accurate pose integration by computing the instantaneous turning center.
+For differential drive robots, the ICR method provides accurate pose integration by computing the instantaneous turning center.
 
 **Heading change:**
 
@@ -153,16 +153,16 @@ For differential drive robots, the ICC method provides accurate pose integration
 R = \frac{b}{2} \cdot \frac{\Delta s_l + \Delta s_r}{\Delta s_r - \Delta s_l}
 ```
 
-**ICC coordinates:**
+**ICR coordinates:**
 
 ```math
-ICC_x = x - R \sin(\theta), \quad ICC_y = y + R \cos(\theta)
+ICR_x = x - R \sin(\theta), \quad ICR_y = y + R \cos(\theta)
 ```
 
 **Pose update (general case):**
 
 ```math
-\begin{bmatrix} x' \\ y' \end{bmatrix} = \begin{bmatrix} \cos\Delta\theta & -\sin\Delta\theta \\ \sin\Delta\theta & \cos\Delta\theta \end{bmatrix} \begin{bmatrix} x - ICC_x \\ y - ICC_y \end{bmatrix} + \begin{bmatrix} ICC_x \\ ICC_y \end{bmatrix}
+\begin{bmatrix} x' \\ y' \end{bmatrix} = \begin{bmatrix} \cos\Delta\theta & -\sin\Delta\theta \\ \sin\Delta\theta & \cos\Delta\theta \end{bmatrix} \begin{bmatrix} x - ICR_x \\ y - ICR_y \end{bmatrix} + \begin{bmatrix} ICR_x \\ ICR_y \end{bmatrix}
 ```
 
 ```math
