@@ -216,7 +216,7 @@ The state vector combines **pose** (position and orientation) with **twist** (li
   - A ground robot is constrained to planar motion (2D position + heading)
   - Roll, pitch, and z-height are assumed constant (flat floor assumption)
 
-- **Twist states (v_x, v_y, ω_z)**: Describe the robot's motion in the world frame
+- **Twist states (vx, vy, ωz)**: Describe the robot's motion in the world frame
   - v_x and v_y are computed from control inputs: $v_x = v \cos\theta$, $v_y = v \sin\theta$
   - ω_z is derived from heading state change: $\omega_z = \Delta\theta / \Delta t$
   - Velocities are expressed in the **world/odom frame**, not the robot body frame
@@ -268,8 +268,6 @@ F_t = \frac{\partial f}{\partial \mu} = \begin{bmatrix}
 0 & 0 & 0 & 0 & 0 & 0
 \end{bmatrix}
 ```
-
-The non-zero off-diagonal terms $F_{x,\theta}$, $F_{y,\theta}$, $F_{v_x,\theta}$, and $F_{v_y,\theta}$ create cross-covariances that enable IMU heading corrections to propagate to all states.
 
 #### 1.2.3 Measurement Model (Correction)
 
@@ -421,7 +419,7 @@ Wheel odometry cannot be a measurement because it already defines the motion mod
 
 **What happens to all 6 states during correction?**
 
-Starting from the Kalman gain (Section 1.2.4):
+Starting from the Kalman gain :
 
 ```math
 K_t = \bar{\Sigma}_t H_t^T (H_t \bar{\Sigma}_t H_t^T + R_t)^{-1}
@@ -441,43 +439,49 @@ H_t \bar{\Sigma}_t H_t^T = \Sigma_{\theta\theta}
 \therefore K_t = \begin{bmatrix} K_x \\ K_y \\ K_\theta \\ K_{v_x} \\ K_{v_y} \\ K_{w_z} \end{bmatrix} = \frac{1}{\Sigma_{\theta\theta} + R_t} \begin{bmatrix} \Sigma_{x\theta} \\ \Sigma_{y\theta} \\ \Sigma_{\theta\theta} \\ \Sigma_{v_x\theta} \\ \Sigma_{v_y\theta} \\ \Sigma_{w_z\theta} \end{bmatrix}
 ```
 
-**Which Q parameters matter?**
+**Key Observation:** From this Kalman gain expression, we see that **all 6 states get corrected** even though we only measure $\theta$. This happens through **cross-covariances** ($\Sigma_{x\theta}, \Sigma_{y\theta}, \Sigma_{v_x\theta}, \Sigma_{v_y\theta}, \Sigma_{w_z\theta}$) which arise from Jacobian coupling in the motion model.
 
-Let's trace how cross-covariances are built. From the covariance prediction:
+When the IMU detects a heading error, the filter uses these correlations to infer and correct position and velocity errors simultaneously.
 
+**Why Only $Q_{\theta\theta}$ Matters: Covariance Flow Analysis**
+
+Tracing covariance through the EKF cycle:
+
+**Covariance Prediction:**
 ```math
-\bar{\Sigma}_{x\theta} = \Sigma_{x\theta} + F_{x,\theta} \cdot \Sigma_{\theta\theta}
+\bar{\Sigma}_t = F_t \Sigma_{t-1} F_t^T + Q_t
 ```
 
-The key observation: **$\Sigma_{x\theta}$ only depends on $\Sigma_{\theta\theta}$, not on $\Sigma_{xx}$!**
+**Cross-covariance growth** (example: $\Sigma_{x\theta}$):
+```math
+\bar{\Sigma}_{x\theta} = \Sigma_{x\theta} + F_{13} \cdot \Sigma_{\theta\theta} = \Sigma_{x\theta} - v\sin\theta \cdot \Delta t \cdot \Sigma_{\theta\theta}
+```
 
-Similarly:
-- $\Sigma_{y\theta}$ depends on $\Sigma_{\theta\theta}$ only
-- $\Sigma_{v_x\theta}$ depends on $\Sigma_{\theta\theta}$ only
-- $\Sigma_{v_y\theta}$ depends on $\Sigma_{\theta\theta}$ only
-
-Since all cross-covariances are built from $\Sigma_{\theta\theta}$, and $\Sigma_{\theta\theta}$ is affected by $Q_{\theta\theta}$:
-
+**Diagonal growth:**
 ```math
 \bar{\Sigma}_{\theta\theta} = \Sigma_{\theta\theta} + Q_{\theta\theta}
 ```
 
-**Conclusion:** Only $Q_{\theta\theta}$ matters for building cross-covariances!
-
-The other Q parameters ($Q_{xx}$, $Q_{yy}$, $Q_{v_xv_x}$, $Q_{v_yv_y}$, $Q_{w_zw_z}$) only affect diagonal elements of $P$:
-
+**Key insight:** Cross-covariances depend on $\Sigma_{\theta\theta}$ (fed by $Q_{\theta\theta}$) multiplied by Jacobian coupling. Other Q parameters only inflate unused diagonals:
 ```math
-\bar{\Sigma}_{xx} = \Sigma_{xx} + Q_{xx}, \quad \bar{\Sigma}_{v_xv_x} = \Sigma_{v_xv_x} + Q_{v_xv_x}, \text{ etc.}
+\bar{\Sigma}_{xx} = \Sigma_{xx} + Q_{xx}, \quad \bar{\Sigma}_{v_xv_x} = \Sigma_{v_xv_x} + Q_{v_xv_x}
 ```
 
-But these diagonal elements **do not appear** in the Kalman gain $K$ because $H = [0, 0, 1, 0, 0, 0]$ only selects $\Sigma_{\theta\theta}$ and the cross-covariances with $\theta$.
+**Why unused diagonals don't matter:**
+
+Kalman gain only uses $\Sigma_{\theta\theta}$ and cross-covariances with $\theta$:
+```math
+K_t = \frac{1}{\Sigma_{\theta\theta} + R_t} \begin{bmatrix} \Sigma_{x\theta} \\ \Sigma_{y\theta} \\ \Sigma_{\theta\theta} \\ \Sigma_{v_x\theta} \\ \Sigma_{v_y\theta} \\ \Sigma_{w_z\theta} \end{bmatrix}
+```
+
+Since $H = [0, 0, 1, 0, 0, 0]$ extracts column 3 of $\bar{\Sigma}$, diagonals $\Sigma_{xx}, \Sigma_{yy}, \Sigma_{v_xv_x}, \Sigma_{v_yv_y}, \Sigma_{w_zw_z}$ never appear in $K$.
 
 **What happens when we change Q and R?**
 
 **Increasing $Q_{\theta\theta}$:**
 - Increases $\Sigma_{\theta\theta}$ faster during prediction
 - Larger $\Sigma_{\theta\theta}$ builds larger cross-covariances through $F$
-- Larger cross-covariances → larger Kalman gains for all states
+- Larger cross-covariances means larger Kalman gains for all states
 - Stronger corrections toward IMU measurement
 
 **Increasing $R$:**
@@ -493,10 +497,10 @@ With only IMU heading as the correction source:
 
 | Parameter | Affects Estimate? | Why? |
 |-----------|------------------|------|
-| **$R$** | ✅ YES | Denominator in all Kalman gains |
-| **$Q_{\theta\theta}$** | ✅ YES | Builds $\Sigma_{\theta\theta}$ which builds all cross-covariances |
-| $Q_{xx}$, $Q_{yy}$ | ❌ NO | Only affect diagonal elements, not cross-covariances |
-| $Q_{v_xv_x}$, $Q_{v_yv_y}$, $Q_{w_zw_z}$ | ❌ NO | Only affect diagonal elements, not cross-covariances |
+| **$R$** | YES | Denominator in all Kalman gains |
+| **$Q_{\theta\theta}$** | YES | Builds $\Sigma_{\theta\theta}$ which builds all cross-covariances |
+| $Q_{xx}$, $Q_{yy}$ | NO | Only affect diagonal elements, not cross-covariances |
+| $Q_{v_xv_x}$, $Q_{v_yv_y}$, $Q_{w_zw_z}$ | NO | Only affect diagonal elements, not cross-covariances |
 
 ### 1.3 Experimental Results
 
@@ -521,7 +525,7 @@ This section validates the EKF implementation using recorded bag files from a Tu
 
 | Parameter | Value |
 |-----------|-------|
-| Q | diag(0.001, 0.001, 0.01, 0.05, 0.05, 0.01) |
+| Q | diag(0, 0, 0.01, 0, 0, 0) |
 | R | 0.1 |
 | Σ₀ | diag(0.01, 0.01, 0.1, 0.5, 0.5, 0.1) |
 | Wheel radius | 0.033 m |
@@ -555,6 +559,14 @@ The EKF implementation is validated using **innovation statistics** following [B
 - **Expected**: Bounded variance matching theoretical prediction covariance
 - **Interpretation**: Measures consistency and stability of filter predictions
 - **What it indicates**: Filter is **not diverging** and maintains bounded uncertainty
+
+**Heading Deviation:**
+- **Definition**: Root mean square error between EKF estimated heading and IMU measured heading
+- **Formula**: $RMSE_\theta = \sqrt{\frac{1}{N}\sum_{k=1}^{N} (\theta_{EKF}^k - \theta_{IMU}^k)^2}$
+- **Unit**: degrees (°)
+- **Expected**: Small value indicating accurate heading tracking
+- **Interpretation**: Measures how closely the EKF heading estimate matches the ground truth IMU heading over the entire trajectory
+- **What it indicates**: Overall heading estimation accuracy and cumulative drift reduction from IMU fusion
 
 #### 1.3.2 Results by Sequence
 
@@ -779,7 +791,7 @@ E_{P2P} = \sum_{i=1}^{N} \| T \cdot p_i - q_i \|^2
 
 **Characteristics:**
 - Simplest variant, minimizes Euclidean distance
-- Fast convergence (~50 iterations max)
+- Fast convergence
 - Sensitive to outliers
 - Works well for dense, overlapping scans
 
@@ -834,7 +846,7 @@ Remove invalid points outside sensor range:
 S_{filtered} = \{p \in S_t \mid r_{min} \leq \|p\| \leq r_{max}\}
 ```
 
-Where $r_{min} = 0.1m$ and $r_{max} = 10m$.
+Where $r_{min}$ is minimum scan range and $r_{max}$ is maximum scan range.
 
 Individual scans are kept at full resolution to preserve geometric detail for accurate correspondence matching.
 

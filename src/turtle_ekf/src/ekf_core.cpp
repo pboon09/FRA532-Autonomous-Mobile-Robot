@@ -29,16 +29,22 @@ void EKFCore::predict(double v, double omega, double dt)
     }
 
     double theta = state_(THETA);
-    double cos_theta = std::cos(theta);
-    double sin_theta = std::sin(theta);
+    double theta_new = normalizeAngle(theta + omega * dt);
+    double cos_theta_new = std::cos(theta_new);
+    double sin_theta_new = std::sin(theta_new);
 
-    state_(X) += v * cos_theta * dt;
-    state_(Y) += v * sin_theta * dt;
-    state_(THETA) = normalizeAngle(state_(THETA) + omega * dt);
+    state_(X) += v * cos_theta_new * dt;
+    state_(Y) += v * sin_theta_new * dt;
+    state_(THETA) = theta_new;
+    state_(VX) = v * cos_theta_new;
+    state_(VY) = v * sin_theta_new;
+    state_(OMEGA_Z) = omega;
 
     Eigen::MatrixXd F = Eigen::MatrixXd::Identity(STATE_SIZE, STATE_SIZE);
-    F(X, THETA) = -v * sin_theta * dt;
-    F(Y, THETA) = v * cos_theta * dt;
+    F(X, THETA) = -v * std::sin(theta) * dt;
+    F(Y, THETA) = v * std::cos(theta) * dt;
+    F(VX, THETA) = -v * sin_theta_new;
+    F(VY, THETA) = v * cos_theta_new;
 
     P_ = F * P_ * F.transpose() + Q_;
 }

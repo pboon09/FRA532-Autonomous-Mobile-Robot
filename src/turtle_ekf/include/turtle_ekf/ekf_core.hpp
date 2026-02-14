@@ -10,13 +10,16 @@ namespace turtle_ekf
 class EKFCore
 {
 public:
-    static constexpr int STATE_SIZE = 3;
+    static constexpr int STATE_SIZE = 6;
 
     enum StateIndex
     {
         X = 0,
         Y = 1,
-        THETA = 2
+        THETA = 2,
+        VX = 3,
+        VY = 4,
+        OMEGA_Z = 5
     };
 
     EKFCore();

@@ -42,10 +42,10 @@ void EKFNode::loadParameters()
     this->declare_parameter("odom_topic", "/wheel_odom");
     this->declare_parameter("imu_topic", "/imu");
 
-    std::vector<double> default_process_noise = {0.001, 0.001, 0.01};
+    std::vector<double> default_process_noise = {0.0, 0.0, 0.01, 0.0, 0.0, 0.0};
     this->declare_parameter("process_noise_covariance", default_process_noise);
 
-    std::vector<double> default_initial_cov = {0.1, 0.1, 0.1};
+    std::vector<double> default_initial_cov = {0.01, 0.01, 0.1, 0.5, 0.5, 0.1};
     this->declare_parameter("initial_estimate_covariance", default_initial_cov);
 
     this->declare_parameter("imu_theta_covariance", 0.1);
@@ -188,13 +188,19 @@ void EKFNode::publishOdometry()
     odom_msg.pose.covariance[31] = P(EKFCore::THETA, EKFCore::Y);
     odom_msg.pose.covariance[35] = P(EKFCore::THETA, EKFCore::THETA);
 
-    odom_msg.twist.twist.linear.x = latest_v_;
-    odom_msg.twist.twist.linear.y = 0.0;
-    odom_msg.twist.twist.angular.z = latest_omega_;
+    odom_msg.twist.twist.linear.x = state(EKFCore::VX);
+    odom_msg.twist.twist.linear.y = state(EKFCore::VY);
+    odom_msg.twist.twist.angular.z = state(EKFCore::OMEGA_Z);
 
-    odom_msg.twist.covariance[0] = 0.01;
-    odom_msg.twist.covariance[7] = 0.01;
-    odom_msg.twist.covariance[35] = 0.01;
+    odom_msg.twist.covariance[0] = P(EKFCore::VX, EKFCore::VX);
+    odom_msg.twist.covariance[1] = P(EKFCore::VX, EKFCore::VY);
+    odom_msg.twist.covariance[5] = P(EKFCore::VX, EKFCore::OMEGA_Z);
+    odom_msg.twist.covariance[6] = P(EKFCore::VY, EKFCore::VX);
+    odom_msg.twist.covariance[7] = P(EKFCore::VY, EKFCore::VY);
+    odom_msg.twist.covariance[11] = P(EKFCore::VY, EKFCore::OMEGA_Z);
+    odom_msg.twist.covariance[30] = P(EKFCore::OMEGA_Z, EKFCore::VX);
+    odom_msg.twist.covariance[31] = P(EKFCore::OMEGA_Z, EKFCore::VY);
+    odom_msg.twist.covariance[35] = P(EKFCore::OMEGA_Z, EKFCore::OMEGA_Z);
 
     odom_pub_->publish(odom_msg);
 }
